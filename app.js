@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: MAGNETIC REPULSION ALGORITHM (TRUE ZERO TRACE)
+// GHOSTLANE CORE ENGINE: GRID SWEEP ZERO-TRACE ALGORITHM
 // ==========================================================
 
 const state = {
@@ -7,7 +7,7 @@ const state = {
   userMarker: null,
   cameraLayer: null,
   routeLayer: null,
-  dodgeLayer: null, // Shows where the engine placed micro-detours
+  dodgeLayer: null,
   watchId: null,
   position: null,
   cameras: [],
@@ -310,139 +310,154 @@ function evaluateDirectionalAlerts() {
   }
 }
 
-// NEW MAGNETIC REPULSION ALGORITHM (ACTIVE MICRO-DETOURING)
+// NEW "GRID SWEEP" EVASION ENGINE (BUG-PROOF ROUTING)
 async function calculateShadowRoute(targetCoords, mode = 'ghost') {
-  if (!state.position) {
-    throw new Error('Active GPS radar is required. Tap START RADAR first.');
-  }
+  if (!state.position) throw new Error('Active GPS radar is required. Tap START RADAR first.');
 
   const start = state.position;
   const end = targetCoords;
-  
+  const btn = document.getElementById('btn-calculate-route');
+
   // Verify Destination Safety
   let destInCone = state.cameras.some(c => getDistanceFeet(end.lat, end.lon, c.lat, c.lon) < 400);
   if (destInCone && mode === 'ghost') {
     alert("CRITICAL: Your exact destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
   }
 
-  let waypoints = [start, end];
-  let finalRoute = null;
-  let finalIntercepts = 0;
-  
-  let maxAttempts = 10; // Will actively dodge up to 10 cameras along the route
-  let attempt = 0;
-
-  while (attempt < maxAttempts) {
+  // Helper to fetch and score a single route without breaking the loop on API failures
+  async function fetchRoute(waypoints) {
     let coordsString = waypoints.map(wp => `${wp.lon},${wp.lat}`).join(';');
     let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
-
-    let res = await fetch(osrmUrl);
-    let data = await res.json();
-    if (!data.routes || data.routes.length === 0) break;
-
-    let route = data.routes[0];
-    let coords = route.geometry.coordinates;
-
-    // Check if the current drawn line hits any camera
-    let interceptCam = null;
-    let interceptIndex = -1;
-
-    for (let i = 0; i < coords.length; i++) {
-      let [rLon, rLat] = coords[i];
-      for (let cam of state.cameras) {
-        if (getDistanceFeet(rLat, rLon, cam.lat, cam.lon) < 400) {
-          interceptCam = cam;
-          interceptIndex = i;
-          break;
-        }
-      }
-      if (interceptCam) break;
-    }
-
-    // If no cameras hit, or we are in fastest mode, we won!
-    if (!interceptCam || mode !== 'ghost') {
-      finalRoute = route;
+    try {
+      let res = await fetch(osrmUrl);
+      let data = await res.json();
+      if (!data.routes || data.routes.length === 0) return null;
       
-      // Calculate total intercepts for UI
+      let route = data.routes[0];
+      let coords = route.geometry.coordinates;
+      
+      // Calculate camera hits
       let hitCams = new Set();
       coords.forEach(c => {
         state.cameras.forEach(cam => {
           if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 400) hitCams.add(cam.id);
         });
       });
-      finalIntercepts = hitCams.size;
-      break;
+      
+      return {
+        route: route,
+        coords: coords,
+        intercepts: hitCams.size,
+        distance: route.distance,
+        duration: route.duration,
+        waypointUsed: waypoints.length === 3 ? waypoints[1] : null
+      };
+    } catch (e) {
+      return null;
     }
+  }
 
-    // A CAMERA WAS HIT. Engage Magnetic Repulsion.
-    // 1. Get the direction you were driving when you hit the camera
-    let p1 = coords[Math.max(0, interceptIndex - 4)]; // 4 points back
-    let p2 = coords[interceptIndex];
-    let routeBearing = getAzimuth(p1[1], p1[0], p2[1], p2[0]);
+  let evaluatedRoutes = [];
+  
+  // 1. Establish Baseline Direct Route
+  let directRoute = await fetchRoute([start, end]);
+  if (!directRoute) throw new Error('Engine Error: The routing server cannot find any roads connecting your location to this destination.');
+  evaluatedRoutes.push(directRoute);
 
-    // 2. Generate two Repulsor Nodes (side streets 2,500 feet to the left and right)
-    let dodgeLeft = getDestinationPoint(interceptCam.lat, interceptCam.lon, (routeBearing - 90 + 360) % 360, 2500);
-    let dodgeRight = getDestinationPoint(interceptCam.lat, interceptCam.lon, (routeBearing + 90) % 360, 2500);
-
-    // 3. Scan the Repulsor Nodes to see which one is safer (furthest from OTHER cameras)
-    let leftDanger = 0, rightDanger = 0;
-    state.cameras.forEach(c => {
-      if (getDistanceFeet(dodgeLeft.lat, dodgeLeft.lon, c.lat, c.lon) < 1500) leftDanger++;
-      if (getDistanceFeet(dodgeRight.lat, dodgeRight.lon, c.lat, c.lon) < 1500) rightDanger++;
-    });
-
-    let bestDodgeNode = (leftDanger <= rightDanger) ? dodgeLeft : dodgeRight;
-
-    // 4. Inject the Repulsor Node into the mandatory waypoints list just before the destination
-    waypoints.splice(waypoints.length - 1, 0, bestDodgeNode);
+  // 2. Engage Grid Sweep (Only if Ghost mode and cameras detected)
+  if (mode === 'ghost' && directRoute.intercepts > 0) {
+    btn.textContent = 'Sweeping Grid for Zero-Trace...';
     
-    // Increment and try routing again
-    attempt++;
+    let mainBearing = getAzimuth(start.lat, start.lon, end.lat, end.lon);
+    let totalDistFeet = getDistanceFeet(start.lat, start.lon, end.lat, end.lon);
+    
+    // We create anchor points at 30%, 50%, and 70% of the way to your destination
+    let fractions = [0.3, 0.5, 0.7];
+    // For each anchor, we pull the route 1, 2, 3, and 5 miles out to the left and right
+    let offsetsFeet = [5280, 10560, 15840, 26400]; 
+    
+    let foundZero = false;
+
+    // Sweep Loop
+    for (let frac of fractions) {
+      if (foundZero) break;
+      let anchorPoint = getDestinationPoint(start.lat, start.lon, mainBearing, totalDistFeet * frac);
+      
+      for (let offset of offsetsFeet) {
+        if (foundZero) break;
+
+        let leftWP = getDestinationPoint(anchorPoint.lat, anchorPoint.lon, (mainBearing - 90 + 360) % 360, offset);
+        let rightWP = getDestinationPoint(anchorPoint.lat, anchorPoint.lon, (mainBearing + 90) % 360, offset);
+
+        // Test Left Evasion
+        let leftRoute = await fetchRoute([start, leftWP, end]);
+        if (leftRoute) evaluatedRoutes.push(leftRoute);
+        if (leftRoute && leftRoute.intercepts === 0) { foundZero = true; break; }
+
+        // Test Right Evasion
+        let rightRoute = await fetchRoute([start, rightWP, end]);
+        if (rightRoute) evaluatedRoutes.push(rightRoute);
+        if (rightRoute && rightRoute.intercepts === 0) { foundZero = true; break; }
+      }
+    }
   }
 
-  // Fallback if it maxed out attempts but still failed
-  if (!finalRoute) {
-    throw new Error('Routing Engine failed to process detours.');
+  // 3. Final Selection
+  if (mode === 'ghost') {
+    evaluatedRoutes.sort((a, b) => {
+      if (a.intercepts !== b.intercepts) return a.intercepts - b.intercepts;
+      return a.duration - b.duration; // Tie-breaker: fastest of the safest
+    });
+  } else {
+    evaluatedRoutes.sort((a, b) => a.duration - b.duration);
   }
 
-  // Draw Route
+  let bestRoute = evaluatedRoutes[0];
+  
+  // Clean Map
   state.routeLayer.clearLayers();
   state.dodgeLayer.clearLayers();
 
-  const leafletCoords = finalRoute.geometry.coordinates.map(c => [c[1], c[0]]);
-  const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
+  // Draw Failed Alternates
+  evaluatedRoutes.forEach(r => {
+    if (r === bestRoute) return;
+    let leafletCoords = r.coords.map(c => [c[1], c[0]]);
+    L.polyline(leafletCoords, { color: '#334155', weight: 4, opacity: 0.3, dashArray: '8, 8' }).addTo(state.routeLayer);
+  });
+
+  // Draw Winning Route
+  let leafletCoords = bestRoute.coords.map(c => [c[1], c[0]]);
+  let routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
   L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
   
-  // Draw the Repulsor Nodes (Micro-detours) visually on the map so you see how it dodged
-  if (mode === 'ghost' && waypoints.length > 2) {
-    for (let i = 1; i < waypoints.length - 1; i++) {
-      L.circleMarker([waypoints[i].lat, waypoints[i].lon], {
+  // Place Anchor Dot so you know where it pulled you
+  if (bestRoute.waypointUsed) {
+     L.circleMarker([bestRoute.waypointUsed.lat, bestRoute.waypointUsed.lon], {
         radius: 6, fillColor: '#10b981', color: '#000', weight: 2, fillOpacity: 1
-      }).bindPopup('Magnetic Repulsor Node').addTo(state.dodgeLayer);
-    }
+      }).bindPopup('Evasion Anchor').addTo(state.dodgeLayer);
   }
 
   state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
 
   // Update UI Stats
-  const totalMiles = (finalRoute.distance * METERS_TO_MILES).toFixed(1);
+  const totalMiles = (bestRoute.distance * METERS_TO_MILES).toFixed(1);
   document.getElementById('route-results').classList.remove('route-results-hidden');
   document.getElementById('res-distance').textContent = `${totalMiles} mi`;
-  document.getElementById('res-duration').textContent = `${Math.round(finalRoute.duration / 60)} min`;
-  document.getElementById('res-intercepts').textContent = finalIntercepts;
+  document.getElementById('res-duration').textContent = `${Math.round(bestRoute.duration / 60)} min`;
+  document.getElementById('res-intercepts').textContent = bestRoute.intercepts;
 
-  // Auto-Dismiss Drawer
+  // Auto-Dismiss Drawer immediately so user can see map
   document.getElementById('panel-routing').classList.add('panel-hidden');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('[data-tab="radar-view"]').classList.add('active');
 
-  // Verify True Zero Trace
+  // Trigger Result Warning
   setTimeout(() => {
     if (mode === 'ghost') {
-      if (finalIntercepts > 0) {
-        alert(`Warning: The engine executed ${attempt} micro-detours but was boxed in by the grid. Route still passes ${finalIntercepts} camera(s).`);
-      } else if (attempt > 0) {
-        alert(`True Zero Trace Achieved. The engine injected ${attempt} side-street micro-detours (green dots) to pull you around the cameras.`);
+      if (bestRoute.intercepts > 0) {
+        alert(`Grid saturation warning: Evaluated ${evaluatedRoutes.length} geographic detours. The local grid is heavily boxed in. Best route still forces you through ${bestRoute.intercepts} camera(s).`);
+      } else if (bestRoute !== directRoute) {
+        alert(`True Zero Trace Achieved. Engine mapped a bypass through a safe Evasion Anchor (green dot).`);
       }
     }
   }, 600);

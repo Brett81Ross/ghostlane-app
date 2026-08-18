@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: HUD FAIL-SAFE & DYNAMIC SIMULATOR
+// GHOSTLANE CORE ENGINE: HEADING-UP ROTATION & RELATIVE TURN NAVIGATION
 // ==========================================================
 
 const state = {
@@ -146,6 +146,13 @@ function initMap() {
   updateLedgerDisplay();
 }
 
+function setMapHeadingRotation(deg) {
+  const mapEl = document.getElementById('map');
+  if (mapEl) {
+    mapEl.style.transform = `rotate(${-deg}deg)`;
+  }
+}
+
 function renderCameraNodes() {
   state.cameraLayer.clearLayers();
   state.cameras.forEach(cam => {
@@ -198,7 +205,7 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   finally { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
 }
 
-// Geometric Turn Predictor
+// Relative Turn Predictor
 function buildTurnInstructions(coords) {
   state.turnWaypoints = [];
   const minDistanceBetweenTurnsFeet = 200; 
@@ -232,7 +239,7 @@ function buildTurnInstructions(coords) {
   }
 }
 
-// Radar, Visual Turn HUD & Off-Route Tracking
+// Radar, Visual Turn HUD & Heading-Up Tracking
 function evaluateActiveTracking(isSimulation = false) {
   if (!state.position) return;
   const { lat, lon, heading, speed } = state.position;
@@ -286,13 +293,15 @@ function evaluateActiveTracking(isSimulation = false) {
     }
   }
 
-  // 2. Active Navigation HUD & Audio Turn-by-Turn
+  // 2. Active Navigation HUD & Heading-Up Map Rotation
   const turnHud = document.getElementById('turn-hud');
   
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination && turnHud) {
     state.map.setView([lat, lon], 17, { animate: false });
+    
+    // Rotate entire viewport so car heading is always UP
+    setMapHeadingRotation(heading);
 
-    // Find the next upcoming turn
     let upcomingTurn = null;
     if (state.turnWaypoints) {
        upcomingTurn = state.turnWaypoints.find(t => !t.passed);
@@ -317,7 +326,6 @@ function evaluateActiveTracking(isSimulation = false) {
        }
     }
 
-    // Arrival Check 
     let distToDest = getDistanceFeet(lat, lon, state.activeDestination.lat, state.activeDestination.lon);
     if (!upcomingTurn || distToDest < 1000) {
         document.getElementById('turn-direction').textContent = `Destination Ahead`;
@@ -330,12 +338,12 @@ function evaluateActiveTracking(isSimulation = false) {
       speakVoiceAlert("You have arrived at your zero-trace destination.");
       state.activeRouteCoords = null; state.activeDestination = null;
       state.routeLayer.clearLayers(); state.dodgeLayer.clearLayers();
-      turnHud.classList.add('turn-hidden'); 
+      turnHud.classList.add('turn-hidden');
+      setMapHeadingRotation(0); // Reset North on arrival
       if (state.simInterval) clearInterval(state.simInterval);
       return;
     }
 
-    // Off-Route Check
     if (!isSimulation) {
       let minRouteDist = Infinity;
       for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
@@ -354,10 +362,11 @@ function evaluateActiveTracking(isSimulation = false) {
     }
   } else {
     if(turnHud) turnHud.classList.add('turn-hidden');
+    setMapHeadingRotation(0);
   }
 }
 
-// LIVE SIMULATOR ENGINE (Dynamic Variable Throttle)
+// LIVE SIMULATOR ENGINE (Dynamic Variable Throttle + Heading-Up Map)
 function runLiveSimulation() {
   if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) return alert("You must generate a Shadow Route first before running the simulator.");
   initAudioEngine();
@@ -369,7 +378,7 @@ function runLiveSimulation() {
   }
 
   if (state.simInterval) clearInterval(state.simInterval);
-  speakVoiceAlert("Navigation simulation initiated. Engaging dynamic fast forward.");
+  speakVoiceAlert("Navigation simulation initiated.");
   
   document.getElementById('panel-routing').classList.add('panel-hidden');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -381,7 +390,11 @@ function runLiveSimulation() {
   let tickRateMs = 100;
 
   state.simInterval = setInterval(() => {
-    if (currentSegIdx >= coords.length - 1) { clearInterval(state.simInterval); return; }
+    if (currentSegIdx >= coords.length - 1) { 
+      clearInterval(state.simInterval); 
+      setMapHeadingRotation(0);
+      return; 
+    }
 
     let p1 = coords[currentSegIdx]; 
     let p2 = coords[currentSegIdx + 1];
@@ -392,7 +405,7 @@ function runLiveSimulation() {
     
     let distToTarget = getDistanceFeet(p1[0], p1[1], targetLat, targetLon);
     
-    let speedFps = 66; 
+    let speedFps = 66;
     let displayMph = 45;
 
     if (distToTarget > 2500) {
@@ -416,7 +429,11 @@ function runLiveSimulation() {
     while (distTraveledOnSeg >= segDist) {
       distTraveledOnSeg -= segDist;
       currentSegIdx++;
-      if (currentSegIdx >= coords.length - 1) { clearInterval(state.simInterval); return; }
+      if (currentSegIdx >= coords.length - 1) { 
+        clearInterval(state.simInterval); 
+        setMapHeadingRotation(0);
+        return; 
+      }
       p1 = coords[currentSegIdx]; p2 = coords[currentSegIdx + 1];
       segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
     }
@@ -546,6 +563,7 @@ function toggleLiveRadar() {
     state.activeRouteCoords = null; state.activeDestination = null;
     state.routeLayer.clearLayers(); if (state.simInterval) clearInterval(state.simInterval);
     if(turnHud) turnHud.classList.add('turn-hidden');
+    setMapHeadingRotation(0);
     return;
   }
   if (!('geolocation' in navigator)) return alert('Geolocation permissions required for live radar.');
@@ -572,7 +590,12 @@ function toggleLiveRadar() {
 document.addEventListener('DOMContentLoaded', () => {
   initMap(); document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
   document.getElementById('btn-sync-mesh').addEventListener('click', () => { const center = state.position ? state.position : state.map.getCenter(); syncMeshCameras(center.lat, center.lon || center.lng, 5); });
-  document.getElementById('btn-recenter').addEventListener('click', () => { if (state.position) state.map.setView([state.position.lat, state.position.lon], 16); });
+  document.getElementById('btn-recenter').addEventListener('click', () => { 
+    if (state.position) {
+      state.map.setView([state.position.lat, state.position.lon], 16);
+      if (!state.activeRouteCoords) setMapHeadingRotation(0);
+    } 
+  });
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {

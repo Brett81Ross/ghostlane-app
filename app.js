@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: CLEAN STABLE ROUTING & HUD CONTROLS
+// GHOSTLANE CORE ENGINE: LIVE GEOLOCATION STARTUP & ROUTING
 // ==========================================================
 
 const state = {
@@ -9,7 +9,7 @@ const state = {
   routeLayer: null,
   dodgeLayer: null,
   watchId: null,
-  position: null,
+  position: null, // Starts null until live GPS locks in
   cameras: [],
   activeThreat: null,
   lastWarningTime: 0,
@@ -21,8 +21,6 @@ const state = {
   activeDestination: null,
   activeMode: 'ghost',
   lastRecalcTime: 0,
-  simInterval: null,
-  isSimulating: false,
   turnWaypoints: []
 };
 
@@ -136,8 +134,9 @@ async function geocodeAddress(address) {
   throw new Error("Address not found. Try adding the city and state.");
 }
 
-// Map Initialization
+// Map Initialization & Instant Geolocation Acquisition
 function initMap() {
+  // Default world view initially until GPS locks
   state.map = L.map('map', { center: [35.4676, -97.5164], zoom: 14, zoomControl: false });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM &copy; CARTO', maxZoom: 19 }).addTo(state.map);
   state.cameraLayer = L.layerGroup().addTo(state.map);
@@ -145,6 +144,31 @@ function initMap() {
   state.dodgeLayer = L.layerGroup().addTo(state.map);
   loadStoredCameras();
   updateLedgerDisplay();
+
+  // Request user's real location immediately on startup
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude, heading, speed } = pos.coords;
+        state.position = { 
+          lat: latitude, 
+          lon: longitude, 
+          heading: heading !== null && !isNaN(heading) ? Math.round(heading) : 0, 
+          speed: speed || 0 
+        };
+        state.map.setView([latitude, longitude], 16);
+        updateVehicleMarker(latitude, longitude, state.position.heading);
+        document.getElementById('route-start').value = `Current GPS Position (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+      },
+      err => {
+        console.warn("Initial GPS lock failed:", err.message);
+        alert("Please enable GPS location permissions in your browser to use GhostLane.");
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  } else {
+    alert("Geolocation is not supported by your browser.");
+  }
 }
 
 function updateVehicleMarker(lat, lon, heading) {
@@ -178,7 +202,7 @@ function renderCameraNodes() {
 
 // Resilient Network Sync
 async function syncMeshCameras(lat, lon, radiusMiles = 5) {
-  if (!lat || !lon) return alert("Location data is missing. Please wait for map to load or tap START RADAR.");
+  if (!lat || !lon) return alert("Location data is missing. Please wait for GPS lock.");
   const radiusMeters = Math.round(radiusMiles * 1609.34);
   const btn = document.getElementById('btn-sync-mesh');
   btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none';
@@ -251,7 +275,7 @@ function buildTurnInstructions(coords) {
 }
 
 // Radar & Tracking Loop
-function evaluateActiveTracking(isSimulation = false) {
+function evaluateActiveTracking() {
   if (!state.position) return;
   const { lat, lon, heading, speed } = state.position;
   const now = Date.now();
@@ -306,8 +330,6 @@ function evaluateActiveTracking(isSimulation = false) {
   const turnHud = document.getElementById('turn-hud');
   
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination && turnHud) {
-    state.map.setView([lat, lon], 17, { animate: false });
-
     let upcomingTurn = null;
     if (state.turnWaypoints) {
        upcomingTurn = state.turnWaypoints.find(t => !t.passed);
@@ -342,7 +364,6 @@ function evaluateActiveTracking(isSimulation = false) {
 
     if (distToDest < 150) {
       speakVoiceAlert("You have arrived at your zero-trace destination.");
-      stopSimulation();
       state.activeRouteCoords = null; 
       state.activeDestination = null;
       state.routeLayer.clearLayers(); 
@@ -351,20 +372,18 @@ function evaluateActiveTracking(isSimulation = false) {
       return;
     }
 
-    if (!isSimulation) {
-      let minRouteDist = Infinity;
-      for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
-        let p1 = state.activeRouteCoords[i]; let p2 = state.activeRouteCoords[i + 1];
-        let d = distanceToSegmentFeet(lat, lon, p1[0], p1[1], p2[0], p2[1]);
-        if (d < minRouteDist) minRouteDist = d;
-      }
+    let minRouteDist = Infinity;
+    for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
+      let p1 = state.activeRouteCoords[i]; let p2 = state.activeRouteCoords[i + 1];
+      let d = distanceToSegmentFeet(lat, lon, p1[0], p1[1], p2[0], p2[1]);
+      if (d < minRouteDist) minRouteDist = d;
+    }
 
-      if (minRouteDist > 200) {
-        if (now - state.lastRecalcTime > 15000) {
-          speakVoiceAlert("Off route. Recalculating evasion vectors.");
-          state.lastRecalcTime = now;
-          calculateShadowRoute(state.activeDestination, state.activeMode, true);
-        }
+    if (minRouteDist > 200) {
+      if (now - state.lastRecalcTime > 15000) {
+        speakVoiceAlert("Off route. Recalculating evasion vectors.");
+        state.lastRecalcTime = now;
+        calculateShadowRoute(state.activeDestination, state.activeMode, true);
       }
     }
   } else {
@@ -372,114 +391,9 @@ function evaluateActiveTracking(isSimulation = false) {
   }
 }
 
-// Stop Simulation Cleanly
-function stopSimulation() {
-  if (state.simInterval) {
-    clearInterval(state.simInterval);
-    state.simInterval = null;
-  }
-  state.isSimulating = false;
-  const btn = document.getElementById('btn-toggle-radar');
-  btn.textContent = 'START RADAR';
-  btn.classList.remove('btn-radar-active', 'btn-radar-sim');
-}
-
-// Simulator Engine
-function runLiveSimulation() {
-  if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) {
-    return alert("You must generate a Shadow Route first before running the simulator.");
-  }
-  
-  if (state.watchId !== null) {
-    navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null;
-  }
-  stopSimulation();
-
-  initAudioEngine();
-  state.isSimulating = true;
-
-  const btn = document.getElementById('btn-toggle-radar');
-  btn.textContent = 'STOP DEMO';
-  btn.classList.add('btn-radar-sim');
-
-  speakVoiceAlert("Navigation simulation initiated.");
-  
-  document.getElementById('panel-routing').classList.add('panel-hidden');
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector('[data-tab="radar-view"]').classList.add('active');
-
-  let coords = state.activeRouteCoords;
-  let currentSegIdx = 0;
-  let distTraveledOnSeg = 0;
-  let tickRateMs = 100;
-
-  state.simInterval = setInterval(() => {
-    if (currentSegIdx >= coords.length - 1) { 
-      stopSimulation();
-      return; 
-    }
-
-    let p1 = coords[currentSegIdx]; 
-    let p2 = coords[currentSegIdx + 1];
-
-    let upcomingTurn = (state.turnWaypoints || []).find(t => !t.passed);
-    let targetLat = upcomingTurn ? upcomingTurn.lat : state.activeDestination.lat;
-    let targetLon = upcomingTurn ? upcomingTurn.lon : state.activeDestination.lon;
-    
-    let distToTarget = getDistanceFeet(p1[0], p1[1], targetLat, targetLon);
-    
-    let speedFps = 66;
-    let displayMph = 45;
-
-    if (distToTarget > 2500) {
-       speedFps = 586; // 400 MPH
-       displayMph = 400;
-    } else if (distToTarget > 1200) {
-       speedFps = 220; // 150 MPH
-       displayMph = 150;
-    } else if (distToTarget > 600) {
-       speedFps = 102; // 70 MPH
-       displayMph = 70;
-    } else {
-       speedFps = 51;  // 35 MPH
-       displayMph = 35;
-    }
-
-    let distPerTick = speedFps * (tickRateMs / 1000);
-    let segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
-    distTraveledOnSeg += distPerTick;
-
-    while (distTraveledOnSeg >= segDist) {
-      distTraveledOnSeg -= segDist;
-      currentSegIdx++;
-      if (currentSegIdx >= coords.length - 1) { 
-        stopSimulation();
-        return; 
-      }
-      p1 = coords[currentSegIdx]; 
-      p2 = coords[currentSegIdx + 1];
-      segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
-    }
-
-    let ratio = segDist === 0 ? 0 : distTraveledOnSeg / segDist;
-    let currentLat = p1[0] + (p2[0] - p1[0]) * ratio;
-    let currentLon = p1[1] + (p2[1] - p1[1]) * ratio;
-    let currentHeading = getAzimuth(p1[0], p1[1], p2[0], p2[1]);
-
-    state.position = { lat: currentLat, lon: currentLon, heading: currentHeading, speed: displayMph * 0.44704 };
-    
-    document.getElementById('stat-speed').innerHTML = `${displayMph} <small>SIM</small>`;
-    document.getElementById('stat-heading').innerHTML = `${Math.round(currentHeading)}°`;
-
-    updateVehicleMarker(currentLat, currentLon, currentHeading);
-    evaluateActiveTracking(true);
-  }, tickRateMs); 
-}
-
-// Exclusion Routing Engine
+// Exclusion Routing Engine with Safe Bounds Fitting
 async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc = false) {
-  if (!state.position) throw new Error('Active GPS radar is required. Tap START RADAR first.');
+  if (!state.position) throw new Error('Active GPS radar required.');
   const start = state.position; 
   const end = targetCoords; 
   const btn = document.getElementById('btn-calculate-route');
@@ -534,7 +448,19 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
     const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
     
     L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
-    if (!isAutoRecalc) state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
+    
+    // Safe crash-proof bounds fitting
+    if (!isAutoRecalc) {
+      try {
+        const polyline = L.polyline(leafletCoords);
+        const bounds = polyline.getBounds();
+        if (bounds.isValid()) {
+          state.map.fitBounds(bounds, { padding: [60, 60] });
+        }
+      } catch (e) {
+        console.warn("Bounds fitting skipped:", e);
+      }
+    }
 
     buildTurnInstructions(leafletCoords);
 
@@ -556,7 +482,7 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('[data-tab="radar-view"]').classList.add('active');
 
-    evaluateActiveTracking(isAutoRecalc);
+    evaluateActiveTracking();
 
   } catch (err) { if (!isAutoRecalc) alert(err.message); } 
   finally {
@@ -595,17 +521,12 @@ function toggleLiveRadar() {
   initAudioEngine(); 
   const btn = document.getElementById('btn-toggle-radar');
   const turnHud = document.getElementById('turn-hud');
-
-  if (state.isSimulating) {
-    stopSimulation();
-    return;
-  }
   
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId); 
     state.watchId = null;
     btn.textContent = 'START RADAR'; 
-    btn.classList.remove('btn-radar-active', 'btn-radar-sim');
+    btn.classList.remove('btn-radar-active');
     state.activeRouteCoords = null; 
     state.activeDestination = null;
     state.routeLayer.clearLayers(); 
@@ -615,7 +536,6 @@ function toggleLiveRadar() {
 
   if (!('geolocation' in navigator)) return alert('Geolocation permissions required for live radar.');
   
-  stopSimulation();
   btn.textContent = 'RADAR LIVE'; 
   btn.classList.add('btn-radar-active');
 
@@ -681,8 +601,6 @@ document.addEventListener('DOMContentLoaded', () => {
       await calculateShadowRoute(targetCoords, mode, false);
     } catch (err) { alert(err.message); }
   });
-
-  document.getElementById('btn-simulate-route').addEventListener('click', runLiveSimulation);
 
   document.getElementById('btn-submit-node').addEventListener('click', () => {
     const hardware = document.getElementById('node-hardware').value; 

@@ -30,6 +30,15 @@
     </div>
   </header>
 
+  <!-- Active Turn-by-Turn HUD -->
+  <div id="turn-hud" class="turn-hidden">
+    <div id="turn-icon" class="turn-icon">⬆️</div>
+    <div class="turn-text">
+      <h4 id="turn-direction">Head Straight</h4>
+      <p id="turn-distance">-- ft</p>
+    </div>
+  </div>
+
   <!-- Real-Time Optical Threat Alert Banner -->
   <div id="threat-alert" class="alert-hidden">
     <div class="alert-pulse-ring"></div>
@@ -112,7 +121,6 @@
             <strong id="res-intercepts" class="text-danger">0</strong>
           </div>
         </div>
-        <!-- SIMULATOR BUTTON -->
         <button id="btn-simulate-route" class="btn btn-warning btn-block" style="margin-top: 12px;">▶ Play Demo Simulation</button>
       </div>
     </div>

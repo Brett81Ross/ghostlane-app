@@ -188,6 +188,23 @@ body, html {
   color: #ffffff;
 }
 
+/* Vehicle Directional Arrow Puck Marker */
+.user-arrow-puck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s linear;
+}
+
+.arrow-core {
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 22px solid #38bdf8;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.9));
+}
+
 /* Quick Controls / Action Buttons */
 #quick-controls {
   position: absolute;
@@ -234,11 +251,6 @@ body, html {
   background: var(--accent-red) !important;
   color: #ffffff !important;
   animation: pulse-border 1.5s infinite;
-}
-
-.btn-radar-sim {
-  background: #d97706 !important;
-  color: #ffffff !important;
 }
 
 /* Bottom Navigation */
@@ -389,11 +401,6 @@ body, html {
   background: var(--bg-card);
   color: var(--text-main);
   border: 1px solid var(--border-color);
-}
-
-.btn-warning {
-  background: #d97706;
-  color: white;
 }
 
 .btn-block {

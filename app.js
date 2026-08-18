@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: GRID SWEEP ZERO-TRACE ALGORITHM
+// GHOSTLANE CORE ENGINE: TRUE EXCLUSION-ZONE ROUTING
 // ==========================================================
 
 const state = {
@@ -77,20 +77,6 @@ function getAzimuth(lat1, lon1, lat2, lon2) {
   const x = Math.cos(lat1 * rad) * Math.sin(lat2 * rad) -
             Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos((lon2 - lon1) * rad);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
-// Generates a GPS coordinate offset by X feet at a specific bearing
-function getDestinationPoint(lat, lon, bearing, distanceFeet) {
-  const R_FEET = 20902231;
-  const d = distanceFeet / R_FEET;
-  const radLat = lat * Math.PI / 180;
-  const radLon = lon * Math.PI / 180;
-  const radBearing = bearing * Math.PI / 180;
-
-  const newLat = Math.asin(Math.sin(radLat) * Math.cos(d) + Math.cos(radLat) * Math.sin(d) * Math.cos(radBearing));
-  const newLon = radLon + Math.atan2(Math.sin(radBearing) * Math.sin(d) * Math.cos(radLat), Math.cos(d) - Math.sin(radLat) * Math.sin(newLat));
-
-  return { lat: newLat * 180 / Math.PI, lon: newLon * 180 / Math.PI };
 }
 
 function computeFovPolygonPoints(lat, lon, headingDeg, fovDeg, distanceFeet = 400) {
@@ -310,9 +296,11 @@ function evaluateDirectionalAlerts() {
   }
 }
 
-// NEW "GRID SWEEP" EVASION ENGINE (BUG-PROOF ROUTING)
+// NEW EXCLUSION-ZONE ENGINE (Server-Side Blockade)
 async function calculateShadowRoute(targetCoords, mode = 'ghost') {
-  if (!state.position) throw new Error('Active GPS radar is required. Tap START RADAR first.');
+  if (!state.position) {
+    throw new Error('Active GPS radar is required. Tap START RADAR first.');
+  }
 
   const start = state.position;
   const end = targetCoords;
@@ -324,143 +312,115 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
     alert("CRITICAL: Your exact destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
   }
 
-  // Helper to fetch and score a single route without breaking the loop on API failures
-  async function fetchRoute(waypoints) {
-    let coordsString = waypoints.map(wp => `${wp.lon},${wp.lat}`).join(';');
-    let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
-    try {
-      let res = await fetch(osrmUrl);
-      let data = await res.json();
-      if (!data.routes || data.routes.length === 0) return null;
+  btn.textContent = 'Threading Zero-Trace Route...';
+  btn.style.opacity = '0.7';
+  btn.style.pointerEvents = 'none';
+
+  try {
+    let routeGeoJson = null;
+    let finalIntercepts = 0;
+
+    if (mode === 'ghost') {
+      // 1. Filter cameras to only those somewhat near the route to save URL length
+      const routeMidLat = (start.lat + end.lat) / 2;
+      const routeMidLon = (start.lon + end.lon) / 2;
+      const maxDist = getDistanceFeet(start.lat, start.lon, end.lat, end.lon) + 26400; // route dist + 5 miles
+
+      const relevantCameras = state.cameras.filter(cam => {
+        return getDistanceFeet(routeMidLat, routeMidLon, cam.lat, cam.lon) < maxDist;
+      });
+
+      // 2. Build the 'nogos' string (lon,lat,radius_in_meters). 150m is a ~500ft exclusion wall.
+      const nogos = relevantCameras.map(c => `${c.lon.toFixed(5)},${c.lat.toFixed(5)},150`).join('|');
+
+      // 3. Ping the BRouter Backend (Natively supports avoidance mapping)
+      const brouterUrl = `https://brouter.de/brouter?lonlats=${start.lon},${start.lat}|${end.lon},${end.lat}&nogos=${nogos}&profile=car-eco&format=geojson`;
+
+      const res = await fetch(brouterUrl);
+      if (!res.ok) throw new Error("The zero-trace engine could not find a path around this many cameras. They form a complete physical blockade across all roads.");
       
-      let route = data.routes[0];
-      let coords = route.geometry.coordinates;
+      const data = await res.json();
+      if (!data.features || data.features.length === 0) throw new Error("No safe route exists.");
       
-      // Calculate camera hits
+      routeGeoJson = data.features[0];
+
+      // Verify intercepts purely for the HUD display
       let hitCams = new Set();
-      coords.forEach(c => {
+      routeGeoJson.geometry.coordinates.forEach(c => {
         state.cameras.forEach(cam => {
-          if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 400) hitCams.add(cam.id);
+          if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id);
         });
       });
+      finalIntercepts = hitCams.size;
+
+    } else {
+      // Standard Fastest Route Engine (OSRM)
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(osrmUrl);
+      const data = await res.json();
+      if (!data.routes || data.routes.length === 0) throw new Error("No route found.");
       
-      return {
-        route: route,
-        coords: coords,
-        intercepts: hitCams.size,
-        distance: route.distance,
-        duration: route.duration,
-        waypointUsed: waypoints.length === 3 ? waypoints[1] : null
+      // Format OSRM to match the rendering code
+      routeGeoJson = {
+         geometry: data.routes[0].geometry,
+         properties: {
+             "track-length": data.routes[0].distance,
+             "total-time": data.routes[0].duration
+         }
       };
-    } catch (e) {
-      return null;
+
+      // Verify intercepts purely for the HUD display
+      let hitCams = new Set();
+      routeGeoJson.geometry.coordinates.forEach(c => {
+        state.cameras.forEach(cam => {
+          if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id);
+        });
+      });
+      finalIntercepts = hitCams.size;
     }
-  }
 
-  let evaluatedRoutes = [];
-  
-  // 1. Establish Baseline Direct Route
-  let directRoute = await fetchRoute([start, end]);
-  if (!directRoute) throw new Error('Engine Error: The routing server cannot find any roads connecting your location to this destination.');
-  evaluatedRoutes.push(directRoute);
+    // Draw the final Map
+    state.routeLayer.clearLayers();
+    state.dodgeLayer.clearLayers();
 
-  // 2. Engage Grid Sweep (Only if Ghost mode and cameras detected)
-  if (mode === 'ghost' && directRoute.intercepts > 0) {
-    btn.textContent = 'Sweeping Grid for Zero-Trace...';
+    const leafletCoords = routeGeoJson.geometry.coordinates.map(c => [c[1], c[0]]);
+    const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
     
-    let mainBearing = getAzimuth(start.lat, start.lon, end.lat, end.lon);
-    let totalDistFeet = getDistanceFeet(start.lat, start.lon, end.lat, end.lon);
-    
-    // We create anchor points at 30%, 50%, and 70% of the way to your destination
-    let fractions = [0.3, 0.5, 0.7];
-    // For each anchor, we pull the route 1, 2, 3, and 5 miles out to the left and right
-    let offsetsFeet = [5280, 10560, 15840, 26400]; 
-    
-    let foundZero = false;
+    L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
+    state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
 
-    // Sweep Loop
-    for (let frac of fractions) {
-      if (foundZero) break;
-      let anchorPoint = getDestinationPoint(start.lat, start.lon, mainBearing, totalDistFeet * frac);
-      
-      for (let offset of offsetsFeet) {
-        if (foundZero) break;
+    // Extract Distance & Duration from whatever engine was used
+    const distanceMeters = routeGeoJson.properties["track-length"] || routeGeoJson.properties.distance || 0;
+    const durationSeconds = routeGeoJson.properties["total-time"] || routeGeoJson.properties.duration || 0;
 
-        let leftWP = getDestinationPoint(anchorPoint.lat, anchorPoint.lon, (mainBearing - 90 + 360) % 360, offset);
-        let rightWP = getDestinationPoint(anchorPoint.lat, anchorPoint.lon, (mainBearing + 90) % 360, offset);
+    const totalMiles = (distanceMeters * METERS_TO_MILES).toFixed(1);
+    document.getElementById('route-results').classList.remove('route-results-hidden');
+    document.getElementById('res-distance').textContent = `${totalMiles} mi`;
+    document.getElementById('res-duration').textContent = `${Math.round(durationSeconds / 60)} min`;
+    document.getElementById('res-intercepts').textContent = finalIntercepts;
 
-        // Test Left Evasion
-        let leftRoute = await fetchRoute([start, leftWP, end]);
-        if (leftRoute) evaluatedRoutes.push(leftRoute);
-        if (leftRoute && leftRoute.intercepts === 0) { foundZero = true; break; }
+    // Auto-Dismiss Drawer
+    document.getElementById('panel-routing').classList.add('panel-hidden');
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('[data-tab="radar-view"]').classList.add('active');
 
-        // Test Right Evasion
-        let rightRoute = await fetchRoute([start, rightWP, end]);
-        if (rightRoute) evaluatedRoutes.push(rightRoute);
-        if (rightRoute && rightRoute.intercepts === 0) { foundZero = true; break; }
+    setTimeout(() => {
+      if (mode === 'ghost') {
+        if (finalIntercepts > 0) {
+          alert(`Grid saturation warning: You are boxed in. The destination or origin forces you through ${finalIntercepts} camera(s).`);
+        } else {
+          alert(`True Zero Trace Achieved. Engine explicitly locked out all camera coordinates from the map algorithm.`);
+        }
       }
-    }
+    }, 600);
+
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.textContent = 'Generate Navigation Vectors';
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
   }
-
-  // 3. Final Selection
-  if (mode === 'ghost') {
-    evaluatedRoutes.sort((a, b) => {
-      if (a.intercepts !== b.intercepts) return a.intercepts - b.intercepts;
-      return a.duration - b.duration; // Tie-breaker: fastest of the safest
-    });
-  } else {
-    evaluatedRoutes.sort((a, b) => a.duration - b.duration);
-  }
-
-  let bestRoute = evaluatedRoutes[0];
-  
-  // Clean Map
-  state.routeLayer.clearLayers();
-  state.dodgeLayer.clearLayers();
-
-  // Draw Failed Alternates
-  evaluatedRoutes.forEach(r => {
-    if (r === bestRoute) return;
-    let leafletCoords = r.coords.map(c => [c[1], c[0]]);
-    L.polyline(leafletCoords, { color: '#334155', weight: 4, opacity: 0.3, dashArray: '8, 8' }).addTo(state.routeLayer);
-  });
-
-  // Draw Winning Route
-  let leafletCoords = bestRoute.coords.map(c => [c[1], c[0]]);
-  let routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
-  L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
-  
-  // Place Anchor Dot so you know where it pulled you
-  if (bestRoute.waypointUsed) {
-     L.circleMarker([bestRoute.waypointUsed.lat, bestRoute.waypointUsed.lon], {
-        radius: 6, fillColor: '#10b981', color: '#000', weight: 2, fillOpacity: 1
-      }).bindPopup('Evasion Anchor').addTo(state.dodgeLayer);
-  }
-
-  state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
-
-  // Update UI Stats
-  const totalMiles = (bestRoute.distance * METERS_TO_MILES).toFixed(1);
-  document.getElementById('route-results').classList.remove('route-results-hidden');
-  document.getElementById('res-distance').textContent = `${totalMiles} mi`;
-  document.getElementById('res-duration').textContent = `${Math.round(bestRoute.duration / 60)} min`;
-  document.getElementById('res-intercepts').textContent = bestRoute.intercepts;
-
-  // Auto-Dismiss Drawer immediately so user can see map
-  document.getElementById('panel-routing').classList.add('panel-hidden');
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector('[data-tab="radar-view"]').classList.add('active');
-
-  // Trigger Result Warning
-  setTimeout(() => {
-    if (mode === 'ghost') {
-      if (bestRoute.intercepts > 0) {
-        alert(`Grid saturation warning: Evaluated ${evaluatedRoutes.length} geographic detours. The local grid is heavily boxed in. Best route still forces you through ${bestRoute.intercepts} camera(s).`);
-      } else if (bestRoute !== directRoute) {
-        alert(`True Zero Trace Achieved. Engine mapped a bypass through a safe Evasion Anchor (green dot).`);
-      }
-    }
-  }, 600);
 }
 
 // Ledger & Storage

@@ -3,217 +3,317 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>GhostLane™ | Zero-Trace Automotive Radar & Navigation</title>
-  
+  <title>GhostLane™ | Path of Shadows</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Navigation Bar */
+    header {
+      background: rgba(11, 15, 25, 0.95);
+      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 1000;
+      backdrop-filter: blur(10px);
+    }
+
+    .brand-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+    }
+
+    .brand-text h1 {
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #ffffff;
+      text-transform: uppercase;
+    }
+
+    .brand-text p {
+      font-size: 0.7rem;
+      color: #38bdf8;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #4ade80;
+      font-weight: 600;
+    }
+
+    .status-pulse {
+      width: 8px;
+      height: 8px;
+      background-color: #22c55e;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+
+    /* Map Interface */
+    #map-container {
+      flex: 1;
+      width: 100%;
+      position: relative;
+      background-color: #050811;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      background: #050811;
+    }
+
+    /* Floating Tactical Overlay */
+    .hud-card {
+      position: absolute;
+      bottom: 24px;
+      left: 16px;
+      right: 16px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 16px;
+      padding: 16px;
+      z-index: 1000;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .hud-title {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .threat-level {
+      color: #38bdf8;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .stat-box {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .stat-val {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .stat-lbl {
+      font-size: 0.65rem;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .action-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #1d4ed8, #0284c7);
+      border: none;
+      color: #ffffff;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+    }
+
+    .action-btn:active {
+      transform: scale(0.98);
+    }
+
+    /* Leaflet Custom Marker Styling */
+    .custom-radar-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .radar-ping {
+      width: 16px;
+      height: 16px;
+      background-color: #ef4444;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px #ef4444;
+    }
+  </style>
 </head>
 <body>
 
-  <!-- Top Telemetry HUD -->
-  <header id="top-hud">
-    <div class="hud-stat">
-      <span class="hud-label">SPEED</span>
-      <span id="stat-speed" class="hud-value">0 <small>MPH</small></span>
+  <header>
+    <div class="brand-container">
+      <img src="logo-gl.png" alt="GhostLane Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/44/0f172a/38bdf8?text=GL'">
+      <div class="brand-text">
+        <h1>GhostLane</h1>
+        <p>Path of Shadows</p>
+      </div>
     </div>
-    <div class="hud-stat">
-      <span class="hud-label">HEADING</span>
-      <span id="stat-heading" class="hud-value">0° <small>N</small></span>
-    </div>
-    <div class="hud-stat">
-      <span class="hud-label">PRIVACY SCORE</span>
-      <span id="stat-privacy" class="hud-value grade-a">100% (A+)</span>
-    </div>
-    <div class="hud-stat">
-      <span class="hud-label">CAMERAS IN RANGE</span>
-      <span id="stat-cams" class="hud-value">0</span>
+    <div class="status-badge">
+      <div class="status-pulse"></div>
+      <span>STEALTH ACTIVE</span>
     </div>
   </header>
 
-  <!-- Active Turn-by-Turn HUD -->
-  <div id="turn-hud" class="turn-hidden">
-    <div id="turn-icon" class="turn-icon">⬆️</div>
-    <div class="turn-text">
-      <h4 id="turn-direction">Head Straight</h4>
-      <p id="turn-distance">-- ft</p>
+  <div id="map-container">
+    <div id="map"></div>
+
+    <div class="hud-card">
+      <div class="hud-header">
+        <span class="hud-title">Vector Telemetry</span>
+        <span class="threat-level">0 Optical Traps on Route</span>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-val" id="evasion-rate">100%</div>
+          <div class="stat-lbl">Cloak Index</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="traps-bypassed">14</div>
+          <div class="stat-lbl">ALPR Bypassed</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val">34 ms</div>
+          <div class="stat-lbl">Route Ping</div>
+        </div>
+      </div>
+
+      <button class="action-btn" onclick="recalculateStealthRoute()">
+        <span>REROUTE TO GHOST PATH</span>
+      </button>
     </div>
   </div>
 
-  <!-- Real-Time Optical Threat Alert Banner -->
-  <div id="threat-alert" class="alert-hidden">
-    <div class="alert-pulse-ring"></div>
-    <div class="alert-content">
-      <div class="alert-icon">⚠️</div>
-      <div class="alert-info">
-        <h4 id="alert-title">OPTICAL SURVEILLANCE INTERCEPT</h4>
-        <p id="alert-subtitle">Approaching ALPR Cone (500 ft)</p>
-      </div>
-      <div id="alert-countdown" class="alert-counter">--</div>
-    </div>
-  </div>
+  <script>
+    // Initialize map with dark tiles
+    const initialCoords = [35.4676, -97.5164]; // Default Center
+    const map = L.map('map', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView(initialCoords, 14);
 
-  <!-- Map Canvas -->
-  <main id="map"></main>
+    // High-contrast Dark Navigation Tiles
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd'
+    }).addTo(map);
 
-  <!-- Floating HUD Viewport Switcher -->
-  <nav id="bottom-nav">
-    <button class="nav-btn active" data-tab="radar-view">
-      <span class="nav-icon">🛰️</span>
-      <span class="nav-label">Radar</span>
-    </button>
-    <button class="nav-btn" data-tab="routing-view">
-      <span class="nav-icon">🔀</span>
-      <span class="nav-label">Shadow Route</span>
-    </button>
-    <button class="nav-btn" data-tab="ledger-view">
-      <span class="nav-icon">📋</span>
-      <span class="nav-label">Ledger</span>
-    </button>
-    <button class="nav-btn" data-tab="verify-view">
-      <span class="nav-icon">📍</span>
-      <span class="nav-label">Log Node</span>
-    </button>
-  </nav>
+    // Mock ALPR / Surveillance Camera Markers
+    const cameraLocations = [
+      { coords: [35.4720, -97.5210], label: "Flock ALPR Array #104" },
+      { coords: [35.4630, -97.5100], label: "Surveillance Gantry #082" },
+      { coords: [35.4690, -97.5050], label: "Traffic Monitor Node #331" }
+    ];
 
-  <!-- Drawer View 1: Shadow Routing Panel -->
-  <section id="panel-routing" class="drawer-panel panel-hidden">
-    <div class="panel-header">
-      <h3>Shadow Routing Engine</h3>
-      <button class="btn-close" data-close="panel-routing">&times;</button>
-    </div>
-    <div class="panel-body">
-      <p class="panel-desc">Calculates lowest-exposure paths by penalizing roads inside active ALPR fields of view.</p>
-      
-      <div class="input-group">
-        <label>Origin</label>
-        <input type="text" id="route-start" placeholder="Current GPS Position" disabled>
-      </div>
-      <div class="input-group">
-        <label>Destination (Lat, Lon or Address)</label>
-        <input type="text" id="route-dest" placeholder="e.g. 416 W Hill St Oklahoma City, OK">
-      </div>
+    const radarIcon = L.divIcon({
+      className: 'custom-radar-marker',
+      html: '<div class="radar-ping"></div>',
+      iconSize: [16, 16]
+    });
 
-      <div class="route-mode-selector">
-        <label class="radio-label">
-          <input type="radio" name="route-mode" value="ghost" checked>
-          <span><strong>Ghost Route</strong> (Minimum Exposure)</span>
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="route-mode" value="fastest">
-          <span><strong>Fastest Route</strong> (Direct / Standard)</span>
-        </label>
-      </div>
+    cameraLocations.forEach(cam => {
+      L.marker(cam.coords, { icon: radarIcon })
+        .addTo(map)
+        .bindPopup(`<b>${cam.label}</b><br><span style="color:#ef4444;">Optical Trap Active</span>`);
+    });
 
-      <button id="btn-calculate-route" class="btn btn-primary btn-block">Generate Navigation Vectors</button>
+    // Mock Active Stealth Path
+    const stealthRouteCoordinates = [
+      [35.4590, -97.5250],
+      [35.4620, -97.5200],
+      [35.4660, -97.5180],
+      [35.4710, -97.5140],
+      [35.4750, -97.5110]
+    ];
 
-      <div id="route-results" class="route-results-hidden">
-        <div class="result-card">
-          <div class="result-row">
-            <span>Route Distance:</span>
-            <strong id="res-distance">-- mi</strong>
-          </div>
-          <div class="result-row">
-            <span>Estimated Duration:</span>
-            <strong id="res-duration">-- min</strong>
-          </div>
-          <div class="result-row">
-            <span>Predicted Camera Intercepts:</span>
-            <strong id="res-intercepts" class="text-danger">0</strong>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+    const routeLine = L.polyline(stealthRouteCoordinates, {
+      color: '#38bdf8',
+      weight: 5,
+      opacity: 0.85,
+      dashArray: '8, 8',
+      lineCap: 'round'
+    }).addTo(map);
 
-  <!-- Drawer View 2: Commute Ledger Panel -->
-  <section id="panel-ledger" class="drawer-panel panel-hidden">
-    <div class="panel-header">
-      <h3>Daily Commute Ledger</h3>
-      <button class="btn-close" data-close="panel-ledger">&times;</button>
-    </div>
-    <div class="panel-body">
-      <div class="ledger-stats">
-        <div class="stat-card">
-          <span>Total Exposures</span>
-          <strong id="ledger-total-count">0</strong>
-        </div>
-        <div class="stat-card">
-          <span>Daily Grade</span>
-          <strong id="ledger-grade" class="grade-a">A+</strong>
-        </div>
-      </div>
-      <h4>Recent Capture Encounters</h4>
-      <ul id="ledger-list" class="ledger-items-list">
-        <li class="empty-state">No surveillance intercepts recorded today.</li>
-      </ul>
-      <button id="btn-clear-ledger" class="btn btn-secondary btn-block">Clear Local Ledger History</button>
-    </div>
-  </section>
-
-  <!-- Drawer View 3: Solar-Node Verification Modal -->
-  <section id="panel-verify" class="drawer-panel panel-hidden">
-    <div class="panel-header">
-      <h3>Solar-Node Verification Protocol</h3>
-      <button class="btn-close" data-close="panel-verify">&times;</button>
-    </div>
-    <div class="panel-body">
-      <p class="panel-desc">Pin and authenticate a physical camera installation to the local mesh database.</p>
-
-      <div class="input-group">
-        <label>Hardware Signature</label>
-        <select id="node-hardware">
-          <option value="Flock Falcon (Solar Pole)">Flock Falcon (Solar Pole)</option>
-          <option value="Flock Raven (Acoustic + Optical)">Flock Raven (Acoustic + Optical)</option>
-          <option value="Motorola Vigilant ALPR">Motorola / Vigilant Fixed ALPR</option>
-          <option value="Municipal Gantry Camera">Overhead Municipal Gantry</option>
-          <option value="Mobile Cruiser Mounted">Mobile Cruiser ALPR Bar</option>
-        </select>
-      </div>
-
-      <div class="input-group">
-        <label>Camera Lens Direction (Facing Heading)</label>
-        <select id="node-heading">
-          <option value="0">North (0°)</option>
-          <option value="45">North-East (45°)</option>
-          <option value="90">East (90°)</option>
-          <option value="135">South-East (135°)</option>
-          <option value="180">South (180°)</option>
-          <option value="225">South-West (225°)</option>
-          <option value="270">West (270°)</option>
-          <option value="315">North-West (315°)</option>
-        </select>
-      </div>
-
-      <div class="input-group">
-        <label>Capture Cone Angle (FOV Degrees)</label>
-        <input type="number" id="node-fov" value="60" min="30" max="120">
-      </div>
-
-      <div class="input-group">
-        <label>Capture Range (Feet)</label>
-        <input type="number" id="node-range" value="400" min="50" max="1000">
-      </div>
-
-      <div class="input-group">
-        <label>Location Target</label>
-        <select id="node-coords-mode">
-          <option value="current">Current GPS Coordinates</option>
-          <option value="center">Map Center Point</option>
-        </select>
-      </div>
-
-      <button id="btn-submit-node" class="btn btn-primary btn-block">Authenticate & Add to Node Mesh</button>
-    </div>
-  </section>
-
-  <!-- Quick Floating Action Buttons -->
-  <div id="quick-controls">
-    <button id="btn-toggle-radar" class="fab btn-radar-start" title="Toggle Live Radar">START RADAR</button>
-    <button id="btn-sync-mesh" class="fab fab-icon" title="Sync OpenStreetMap / DeFlock Mesh">🔄</button>
-    <button id="btn-recenter" class="fab fab-icon" title="Recenter Location">🎯</button>
-  </div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js"></script>
+    function recalculateStealthRoute() {
+      const bypassedCount = document.getElementById('traps-bypassed');
+      let current = parseInt(bypassedCount.innerText);
+      bypassedCount.innerText = current + 1;
+      alert("GhostLane: Route optimized. Optical evasion vectors applied.");
+    }
+  </script>
 </body>
 </html>

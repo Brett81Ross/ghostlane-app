@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: INTERPOLATED SIMULATOR & AUDIO FIX
+// GHOSTLANE CORE ENGINE: EXCLUSION ROUTING & DYNAMIC SIMULATOR
 // ==========================================================
 
 const state = {
@@ -58,7 +58,6 @@ function playRadarSweepBeep() {
 
 function speakVoiceAlert(phrase) {
   if ('speechSynthesis' in window) {
-    // Only cancel if it's currently speaking to avoid cutting off fast instructions
     if (window.speechSynthesis.speaking) window.speechSynthesis.cancel();
     const voiceMsg = new SpeechSynthesisUtterance(phrase);
     voiceMsg.rate = 1.1;
@@ -214,7 +213,6 @@ function buildTurnInstructions(coords) {
 
     let diff = ((b2 - b1 + 540) % 360) - 180;
 
-    // If the vector shifts more than 35 degrees, it's a turn
     if (Math.abs(diff) > 35) { 
       let turnType = diff > 0 ? "right" : "left";
       
@@ -226,25 +224,21 @@ function buildTurnInstructions(coords) {
 
       if (!tooClose) {
           state.turnWaypoints.push({ 
-            lat: p2[0], 
-            lon: p2[1], 
-            type: turnType, 
-            announced1000: false, 
-            announced250: false,
-            passed: false 
+            lat: p2[0], lon: p2[1], type: turnType, 
+            announced1000: false, announced250: false, passed: false 
           });
       }
     }
   }
 }
 
-// Radar & Off-Route Tracking
+// Radar, Visual Turn HUD & Off-Route Tracking
 function evaluateActiveTracking(isSimulation = false) {
   if (!state.position) return;
   const { lat, lon, heading, speed } = state.position;
   const now = Date.now();
 
-  // 1. ALPR Camera Intercept Radar
+  // 1. Camera Intercept Radar
   if (state.cameras.length > 0) {
     const alertThresholdFeet = 1000;
     let closestIntercept = null;
@@ -292,36 +286,53 @@ function evaluateActiveTracking(isSimulation = false) {
     }
   }
 
-  // 2. Waze-Style Active Navigation & Audio Turn-by-Turn
+  // 2. Active Navigation HUD & Audio Turn-by-Turn
+  const turnHud = document.getElementById('turn-hud');
+  
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination) {
-    
-    // HARD CAMERA LOCK: animate=false prevents glitching during fast updates
     state.map.setView([lat, lon], 17, { animate: false });
 
-    // Turn-by-Turn Audio Announcements
+    // Find the next upcoming turn
+    let upcomingTurn = null;
     if (state.turnWaypoints) {
-       for (let turn of state.turnWaypoints) {
-           if (turn.passed) continue;
-           let distToTurn = getDistanceFeet(lat, lon, turn.lat, turn.lon);
+       upcomingTurn = state.turnWaypoints.find(t => !t.passed);
+       
+       if (upcomingTurn) {
+           let distToTurn = getDistanceFeet(lat, lon, upcomingTurn.lat, upcomingTurn.lon);
+           
+           // Update Visual HUD
+           document.getElementById('turn-direction').textContent = `Turn ${upcomingTurn.type}`;
+           document.getElementById('turn-distance').textContent = `${Math.round(distToTurn)} ft`;
+           document.getElementById('turn-icon').textContent = upcomingTurn.type === 'left' ? '⬅️' : '➡️';
+           turnHud.classList.remove('turn-hidden');
 
+           // Handle Audio Triggers & Passing
            if (distToTurn < 100) {
-               turn.passed = true;
-           } else if (distToTurn < 300 && !turn.announced250) {
-               speakVoiceAlert(`Turn ${turn.type} ahead.`);
-               turn.announced250 = true;
-           } else if (distToTurn < 1000 && distToTurn > 600 && !turn.announced1000) {
-               speakVoiceAlert(`In 1000 feet, turn ${turn.type}.`);
-               turn.announced1000 = true;
+               upcomingTurn.passed = true;
+           } else if (distToTurn < 300 && !upcomingTurn.announced250) {
+               speakVoiceAlert(`Turn ${upcomingTurn.type} ahead.`);
+               upcomingTurn.announced250 = true;
+           } else if (distToTurn < 1000 && distToTurn > 600 && !upcomingTurn.announced1000) {
+               speakVoiceAlert(`In 1000 feet, turn ${upcomingTurn.type}.`);
+               upcomingTurn.announced1000 = true;
            }
        }
     }
 
     // Arrival Check
     let distToDest = getDistanceFeet(lat, lon, state.activeDestination.lat, state.activeDestination.lon);
+    if (!upcomingTurn || distToDest < 1000) {
+        document.getElementById('turn-direction').textContent = `Destination Ahead`;
+        document.getElementById('turn-distance').textContent = `${Math.round(distToDest)} ft`;
+        document.getElementById('turn-icon').textContent = '🏁';
+        turnHud.classList.remove('turn-hidden');
+    }
+
     if (distToDest < 150) {
       speakVoiceAlert("You have arrived at your zero-trace destination.");
       state.activeRouteCoords = null; state.activeDestination = null;
       state.routeLayer.clearLayers(); state.dodgeLayer.clearLayers();
+      turnHud.classList.add('turn-hidden'); 
       if (state.simInterval) clearInterval(state.simInterval);
       return;
     }
@@ -343,23 +354,24 @@ function evaluateActiveTracking(isSimulation = false) {
         }
       }
     }
+  } else {
+    turnHud.classList.add('turn-hidden');
   }
 }
 
-// LIVE SIMULATOR ENGINE (Interpolated Anti-Glitch Fix)
+// LIVE SIMULATOR ENGINE (Dynamic Variable Throttle)
 function runLiveSimulation() {
   if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) return alert("You must generate a Shadow Route first before running the simulator.");
   initAudioEngine();
   
   if (state.watchId !== null) {
-    navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null;
+    navigator.geolocation.clearWatch(state.watchId); state.watchId = null;
     document.getElementById('btn-toggle-radar').textContent = 'START RADAR';
     document.getElementById('btn-toggle-radar').classList.remove('btn-radar-active');
   }
 
   if (state.simInterval) clearInterval(state.simInterval);
-  speakVoiceAlert("Navigation simulation initiated.");
+  speakVoiceAlert("Navigation simulation initiated. Engaging dynamic fast forward.");
   
   document.getElementById('panel-routing').classList.add('panel-hidden');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -368,56 +380,70 @@ function runLiveSimulation() {
   let coords = state.activeRouteCoords;
   let currentSegIdx = 0;
   let distTraveledOnSeg = 0;
-  
-  // Math for 45 MPH smooth movement (updates every 100ms)
-  let speedFps = 66; 
   let tickRateMs = 100;
-  let distPerTick = speedFps * (tickRateMs / 1000); 
 
   state.simInterval = setInterval(() => {
-    if (currentSegIdx >= coords.length - 1) { 
-        clearInterval(state.simInterval); 
-        return; 
+    if (currentSegIdx >= coords.length - 1) { clearInterval(state.simInterval); return; }
+
+    let p1 = coords[currentSegIdx]; 
+    let p2 = coords[currentSegIdx + 1];
+
+    // -- DYNAMIC THROTTLE LOGIC --
+    let upcomingTurn = (state.turnWaypoints || []).find(t => !t.passed);
+    let targetLat = upcomingTurn ? upcomingTurn.lat : state.activeDestination.lat;
+    let targetLon = upcomingTurn ? upcomingTurn.lon : state.activeDestination.lon;
+    
+    let distToTarget = getDistanceFeet(p1[0], p1[1], targetLat, targetLon);
+    
+    let speedFps = 66; // Baseline 45 MPH
+    let displayMph = 45;
+
+    // Shift gears based on distance to the next event
+    if (distToTarget > 2500) {
+       speedFps = 586; // 400 MPH (Hyper-Drive)
+       displayMph = 400;
+    } else if (distToTarget > 1200) {
+       speedFps = 220; // 150 MPH (Decelerating)
+       displayMph = 150;
+    } else if (distToTarget > 600) {
+       speedFps = 102; // 70 MPH (Approaching Warning Zone)
+       displayMph = 70;
+    } else {
+       speedFps = 51;  // 35 MPH (Taking the turn smoothly)
+       displayMph = 35;
     }
 
-    let p1 = coords[currentSegIdx];
-    let p2 = coords[currentSegIdx + 1];
-    let segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
+    let distPerTick = speedFps * (tickRateMs / 1000);
 
+    let segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
     distTraveledOnSeg += distPerTick;
 
-    // Move to next line segment if we passed it
     while (distTraveledOnSeg >= segDist) {
       distTraveledOnSeg -= segDist;
       currentSegIdx++;
-      if (currentSegIdx >= coords.length - 1) {
-         clearInterval(state.simInterval);
-         return;
-      }
-      p1 = coords[currentSegIdx];
-      p2 = coords[currentSegIdx + 1];
+      if (currentSegIdx >= coords.length - 1) { clearInterval(state.simInterval); return; }
+      p1 = coords[currentSegIdx]; p2 = coords[currentSegIdx + 1];
       segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
     }
 
-    // Linear Interpolation for exact coordinate
     let ratio = segDist === 0 ? 0 : distTraveledOnSeg / segDist;
     let currentLat = p1[0] + (p2[0] - p1[0]) * ratio;
     let currentLon = p1[1] + (p2[1] - p1[1]) * ratio;
     let currentHeading = getAzimuth(p1[0], p1[1], p2[0], p2[1]);
 
-    state.position = { lat: currentLat, lon: currentLon, heading: currentHeading, speed: 20 };
-
-    document.getElementById('stat-speed').innerHTML = `45 <small>MPH</small>`;
+    // Speed calculation for HUD (0.44704 m/s = 1 mph)
+    state.position = { lat: currentLat, lon: currentLon, heading: currentHeading, speed: displayMph * 0.44704 };
+    
+    document.getElementById('stat-speed').innerHTML = `${displayMph} <small>SIM</small>`;
     document.getElementById('stat-heading').innerHTML = `${Math.round(currentHeading)}°`;
 
     if (!state.userMarker) {
         state.userMarker = L.circleMarker([currentLat, currentLon], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
-    } else {
-        state.userMarker.setLatLng([currentLat, currentLon]);
+    } else { 
+        state.userMarker.setLatLng([currentLat, currentLon]); 
     }
 
     evaluateActiveTracking(true);
-
   }, tickRateMs); 
 }
 
@@ -428,7 +454,7 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
 
   if (!isAutoRecalc) {
     let destInCone = state.cameras.some(c => getDistanceFeet(end.lat, end.lon, c.lat, c.lon) < 400);
-    if (destInCone && mode === 'ghost') alert("CRITICAL: Your exact destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
+    if (destInCone && mode === 'ghost') alert("CRITICAL: Your destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
     btn.textContent = 'Threading Zero-Trace Route...'; btn.style.opacity = '0.7'; btn.style.pointerEvents = 'none';
   }
 
@@ -444,7 +470,7 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
       
       const brouterUrl = `https://brouter.de/brouter?lonlats=${start.lon},${start.lat}|${end.lon},${end.lat}&nogos=${nogos}&profile=car-eco&format=geojson`;
       const res = await fetch(brouterUrl);
-      if (!res.ok) throw new Error("The zero-trace engine could not find a path around this many cameras. They form a complete physical blockade.");
+      if (!res.ok) throw new Error("The zero-trace engine could not find a path around this many cameras. They form a blockade.");
       const data = await res.json();
       if (!data.features || data.features.length === 0) throw new Error("No safe route exists.");
       
@@ -473,7 +499,6 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
     L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
     if (!isAutoRecalc) state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
 
-    // Generate Audio Turn Instructions
     buildTurnInstructions(leafletCoords);
 
     const distanceMeters = routeGeoJson.properties["track-length"] || routeGeoJson.properties.distance || 0;
@@ -486,6 +511,8 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
     document.getElementById('res-intercepts').textContent = finalIntercepts;
 
     state.activeRouteCoords = leafletCoords; state.activeDestination = targetCoords; state.activeMode = mode;
+    
+    evaluateActiveTracking(isAutoRecalc);
 
   } catch (err) { if (!isAutoRecalc) alert(err.message); } 
   finally {
@@ -522,6 +549,7 @@ function toggleLiveRadar() {
     btn.textContent = 'START RADAR'; btn.classList.remove('btn-radar-active');
     state.activeRouteCoords = null; state.activeDestination = null;
     state.routeLayer.clearLayers(); if (state.simInterval) clearInterval(state.simInterval);
+    document.getElementById('turn-hud').classList.add('turn-hidden');
     return;
   }
   if (!('geolocation' in navigator)) return alert('Geolocation permissions required for live radar.');

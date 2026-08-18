@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: EXCLUSION ROUTING & LIVE SIMULATOR
+// GHOSTLANE CORE ENGINE: EXCLUSION ROUTING & AUDIO TURN-BY-TURN
 // ==========================================================
 
 const state = {
@@ -16,12 +16,14 @@ const state = {
   ledger: JSON.parse(localStorage.getItem('ghostlane_ledger') || '[]'),
   audioCtx: null,
   
-  // Active Navigation State
+  // Active Navigation & Turn-by-Turn State
   activeRouteCoords: null,
   activeDestination: null,
   activeMode: 'ghost',
   lastRecalcTime: 0,
-  simInterval: null // Simulator engine loop
+  simInterval: null,
+  turnWaypoints: [],
+  nextTurnIndex: 0
 };
 
 const METERS_TO_FEET = 3.28084;
@@ -136,54 +138,33 @@ async function geocodeAddress(address) {
 
 // Map Initialization
 function initMap() {
-  state.map = L.map('map', {
-    center: [35.4676, -97.5164],
-    zoom: 14,
-    zoomControl: false
-  });
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OSM &copy; CARTO',
-    maxZoom: 19
-  }).addTo(state.map);
-
+  state.map = L.map('map', { center: [35.4676, -97.5164], zoom: 14, zoomControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM &copy; CARTO', maxZoom: 19 }).addTo(state.map);
   state.cameraLayer = L.layerGroup().addTo(state.map);
   state.routeLayer = L.layerGroup().addTo(state.map);
   state.dodgeLayer = L.layerGroup().addTo(state.map);
-
   loadStoredCameras();
   updateLedgerDisplay();
 }
 
 function renderCameraNodes() {
   state.cameraLayer.clearLayers();
-
   state.cameras.forEach(cam => {
     const fovCoords = computeFovPolygonPoints(cam.lat, cam.lon, cam.heading, cam.fov || 60, cam.range || 400);
     L.polygon(fovCoords, { color: '#ef4444', weight: 1, fillColor: '#ef4444', fillOpacity: 0.18 }).addTo(state.cameraLayer);
-
-    const icon = L.divIcon({
-      className: 'cam-marker',
-      html: `<div style="width: 12px; height: 12px; background: #ef4444; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 0 8px #ef4444;"></div>`,
-      iconSize: [12, 12], iconAnchor: [6, 6]
-    });
-
+    const icon = L.divIcon({ className: 'cam-marker', html: `<div style="width: 12px; height: 12px; background: #ef4444; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 0 8px #ef4444;"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] });
     const marker = L.marker([cam.lat, cam.lon], { icon }).addTo(state.cameraLayer);
     marker.bindPopup(`<div style="color: #0b0f19; font-size: 0.8rem;"><strong>${cam.hardware || 'Camera Node'}</strong><br>Lens Heading: ${cam.heading}°<br>FOV: ${cam.fov || 60}°<br>Range: ${cam.range || 400} ft<br>Source: ${cam.source || 'Verified Node'}</div>`);
   });
-
   document.getElementById('stat-cams').textContent = state.cameras.length;
 }
 
 // Resilient Network Sync
 async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   if (!lat || !lon) return alert("Location data is missing. Please wait for map to load or tap START RADAR.");
-
   const radiusMeters = Math.round(radiusMiles * 1609.34);
   const btn = document.getElementById('btn-sync-mesh');
-  
-  btn.style.opacity = '0.5';
-  btn.style.pointerEvents = 'none';
+  btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none';
 
   const query = `[out:json][timeout:25];(node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon}););out body;`;
   const endpoints = ['https://overpass-api.de/api/interpreter', 'https://lz4.overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
@@ -205,31 +186,60 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
       let type = "Surveillance Node";
       if (el.tags && el.tags['surveillance:type']) type = el.tags['surveillance:type'];
       else if (el.tags && el.tags['highway'] === 'speed_camera') type = 'Speed Camera';
-
       return { id: `osm-${el.id}`, lat: el.lat, lon: el.lon, heading: heading, fov: 60, range: 400, hardware: type.toUpperCase(), source: 'OSM Verified' };
     });
 
     let newCount = 0;
-    fetched.forEach(item => {
-      if (!state.cameras.some(c => c.id === item.id)) { state.cameras.push(item); newCount++; }
-    });
+    fetched.forEach(item => { if (!state.cameras.some(c => c.id === item.id)) { state.cameras.push(item); newCount++; } });
 
-    saveStoredCameras();
-    renderCameraNodes();
-    
+    saveStoredCameras(); renderCameraNodes();
     if (newCount > 0) alert(`Mesh Sync Complete. Discovered ${newCount} surveillance nodes.`);
     else alert(`Mesh Sync Complete. No new cameras found.`);
   } catch (err) { alert(`Connection Error: ${err.message}.`); } 
   finally { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
 }
 
-// Radar & Off-Route Engine
+// Geometric Turn-by-Turn Engine
+function buildTurnInstructions(coords) {
+  state.turnWaypoints = [];
+  state.nextTurnIndex = 0;
+  const minDistanceBetweenTurnsFeet = 300; 
+
+  for (let i = 2; i < coords.length - 2; i += 2) {
+    let p1 = coords[i-2];
+    let p2 = coords[i];
+    let p3 = coords[i+2];
+
+    let b1 = getAzimuth(p1[0], p1[1], p2[0], p2[1]);
+    let b2 = getAzimuth(p2[0], p2[1], p3[0], p3[1]);
+
+    let diff = ((b2 - b1 + 540) % 360) - 180;
+
+    if (Math.abs(diff) > 40) { 
+      let turnType = diff > 0 ? "right" : "left";
+      
+      let tooClose = false;
+      if (state.turnWaypoints.length > 0) {
+         let lastTurn = state.turnWaypoints[state.turnWaypoints.length - 1];
+         if (getDistanceFeet(lastTurn.lat, lastTurn.lon, p2[0], p2[1]) < minDistanceBetweenTurnsFeet) {
+             tooClose = true;
+         }
+      }
+
+      if (!tooClose) {
+          state.turnWaypoints.push({ lat: p2[0], lon: p2[1], type: turnType, announced1000: false, announced250: false });
+      }
+    }
+  }
+}
+
+// Radar & Off-Route Tracking
 function evaluateActiveTracking(isSimulation = false) {
   if (!state.position) return;
   const { lat, lon, heading, speed } = state.position;
   const now = Date.now();
 
-  // 1. Camera Intercept Radar
+  // 1. ALPR Camera Intercept Radar
   if (state.cameras.length > 0) {
     const alertThresholdFeet = 1000;
     let closestIntercept = null;
@@ -277,30 +287,42 @@ function evaluateActiveTracking(isSimulation = false) {
     }
   }
 
-  // 2. Waze-Style Active Navigation tracking
+  // 2. Waze-Style Active Navigation & Audio Turn-by-Turn
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination) {
     
-    // Auto-center map on car while driving
     state.map.setView([lat, lon], 17);
+
+    // Turn-by-Turn Audio Announcements
+    if (state.turnWaypoints && state.nextTurnIndex < state.turnWaypoints.length) {
+       let nextTurn = state.turnWaypoints[state.nextTurnIndex];
+       let distToTurn = getDistanceFeet(lat, lon, nextTurn.lat, nextTurn.lon);
+
+       if (distToTurn < 120) {
+           state.nextTurnIndex++; // Cleared the turn
+       } else if (distToTurn < 350 && !nextTurn.announced250) {
+           speakVoiceAlert(`Turn ${nextTurn.type} ahead.`);
+           nextTurn.announced250 = true;
+       } else if (distToTurn < 1100 && distToTurn > 800 && !nextTurn.announced1000) {
+           speakVoiceAlert(`In 1000 feet, turn ${nextTurn.type}.`);
+           nextTurn.announced1000 = true;
+       }
+    }
 
     // Arrival Check
     let distToDest = getDistanceFeet(lat, lon, state.activeDestination.lat, state.activeDestination.lon);
     if (distToDest < 150) {
       speakVoiceAlert("You have arrived at your zero-trace destination.");
-      state.activeRouteCoords = null;
-      state.activeDestination = null;
-      state.routeLayer.clearLayers();
-      state.dodgeLayer.clearLayers();
+      state.activeRouteCoords = null; state.activeDestination = null;
+      state.routeLayer.clearLayers(); state.dodgeLayer.clearLayers();
       if (state.simInterval) clearInterval(state.simInterval);
       return;
     }
 
-    // Off-Route Check (Don't run off-route checks during the fake simulation to prevent glitches)
+    // Off-Route Check
     if (!isSimulation) {
       let minRouteDist = Infinity;
       for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
-        let p1 = state.activeRouteCoords[i];
-        let p2 = state.activeRouteCoords[i + 1];
+        let p1 = state.activeRouteCoords[i]; let p2 = state.activeRouteCoords[i + 1];
         let d = distanceToSegmentFeet(lat, lon, p1[0], p1[1], p2[0], p2[1]);
         if (d < minRouteDist) minRouteDist = d;
       }
@@ -316,16 +338,11 @@ function evaluateActiveTracking(isSimulation = false) {
   }
 }
 
-// LIVE SIMULATOR ENGINE (Creates a fake demo drive)
+// LIVE SIMULATOR ENGINE
 function runLiveSimulation() {
-  if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) {
-    alert("You must generate a Shadow Route first before running the simulator.");
-    return;
-  }
-
+  if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) return alert("You must generate a Shadow Route first before running the simulator.");
   initAudioEngine();
   
-  // Cut the real GPS if it's on
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId);
     state.watchId = null;
@@ -334,10 +351,8 @@ function runLiveSimulation() {
   }
 
   if (state.simInterval) clearInterval(state.simInterval);
-
   speakVoiceAlert("Navigation simulation initiated. Engaging fast-forward.");
   
-  // Close drawer so user can watch
   document.getElementById('panel-routing').classList.add('panel-hidden');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('[data-tab="radar-view"]').classList.add('active');
@@ -346,74 +361,48 @@ function runLiveSimulation() {
   let coords = state.activeRouteCoords;
 
   state.simInterval = setInterval(() => {
-    if (currentIndex >= coords.length) {
-      clearInterval(state.simInterval);
-      return;
-    }
-
+    if (currentIndex >= coords.length) { clearInterval(state.simInterval); return; }
     let currentPt = coords[currentIndex];
     
-    // Inject fake telemetry into the state
-    state.position = {
-      lat: currentPt[0],
-      lon: currentPt[1],
-      heading: 0,
-      speed: 20 // 20 m/s = ~45mph
-    };
+    state.position = { lat: currentPt[0], lon: currentPt[1], heading: 0, speed: 20 };
 
-    // Calculate realistic heading for the HUD
     if (currentIndex < coords.length - 1) {
       state.position.heading = getAzimuth(currentPt[0], currentPt[1], coords[currentIndex+1][0], coords[currentIndex+1][1]);
     }
 
-    // Update the HUD displays
     document.getElementById('stat-speed').innerHTML = `45 <small>MPH</small>`;
     document.getElementById('stat-heading').innerHTML = `${Math.round(state.position.heading)}°`;
 
-    // Move the blue marker
-    if (!state.userMarker) {
-      state.userMarker = L.circleMarker([state.position.lat, state.position.lon], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
-    } else {
-      state.userMarker.setLatLng([state.position.lat, state.position.lon]);
-    }
+    if (!state.userMarker) state.userMarker = L.circleMarker([state.position.lat, state.position.lon], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
+    else state.userMarker.setLatLng([state.position.lat, state.position.lon]);
 
-    // Trigger the radar check with the fake data (flagged as simulation to skip off-route recalc)
     evaluateActiveTracking(true);
-
-    currentIndex += 3; // Skips points to fast-forward the drive
-  }, 350); // Updates every 350 milliseconds
+    currentIndex += 3;
+  }, 350); 
 }
 
-// BRouter EXCLUSION-ZONE ENGINE (Server-Side Blockade)
+// EXCLUSION-ZONE ROUTING ENGINE
 async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc = false) {
   if (!state.position) throw new Error('Active GPS radar is required. Tap START RADAR first.');
-
-  const start = state.position;
-  const end = targetCoords;
-  const btn = document.getElementById('btn-calculate-route');
+  const start = state.position; const end = targetCoords; const btn = document.getElementById('btn-calculate-route');
 
   if (!isAutoRecalc) {
     let destInCone = state.cameras.some(c => getDistanceFeet(end.lat, end.lon, c.lat, c.lon) < 400);
     if (destInCone && mode === 'ghost') alert("CRITICAL: Your exact destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
-    btn.textContent = 'Threading Zero-Trace Route...';
-    btn.style.opacity = '0.7';
-    btn.style.pointerEvents = 'none';
+    btn.textContent = 'Threading Zero-Trace Route...'; btn.style.opacity = '0.7'; btn.style.pointerEvents = 'none';
   }
 
   try {
-    let routeGeoJson = null;
-    let finalIntercepts = 0;
+    let routeGeoJson = null; let finalIntercepts = 0;
 
     if (mode === 'ghost') {
-      const routeMidLat = (start.lat + end.lat) / 2;
-      const routeMidLon = (start.lon + end.lon) / 2;
+      const routeMidLat = (start.lat + end.lat) / 2; const routeMidLon = (start.lon + end.lon) / 2;
       const maxDist = getDistanceFeet(start.lat, start.lon, end.lat, end.lon) + 26400;
 
       const relevantCameras = state.cameras.filter(cam => getDistanceFeet(routeMidLat, routeMidLon, cam.lat, cam.lon) < maxDist);
       const nogos = relevantCameras.map(c => `${c.lon.toFixed(5)},${c.lat.toFixed(5)},150`).join('|');
       
       const brouterUrl = `https://brouter.de/brouter?lonlats=${start.lon},${start.lat}|${end.lon},${end.lat}&nogos=${nogos}&profile=car-eco&format=geojson`;
-
       const res = await fetch(brouterUrl);
       if (!res.ok) throw new Error("The zero-trace engine could not find a path around this many cameras. They form a complete physical blockade.");
       const data = await res.json();
@@ -422,9 +411,7 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
       routeGeoJson = data.features[0];
 
       let hitCams = new Set();
-      routeGeoJson.geometry.coordinates.forEach(c => {
-        state.cameras.forEach(cam => { if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id); });
-      });
+      routeGeoJson.geometry.coordinates.forEach(c => { state.cameras.forEach(cam => { if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id); }); });
       finalIntercepts = hitCams.size;
 
     } else {
@@ -434,71 +421,50 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
       if (!data.routes || data.routes.length === 0) throw new Error("No route found.");
       
       routeGeoJson = { geometry: data.routes[0].geometry, properties: { "track-length": data.routes[0].distance, "total-time": data.routes[0].duration } };
-
       let hitCams = new Set();
-      routeGeoJson.geometry.coordinates.forEach(c => {
-        state.cameras.forEach(cam => { if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id); });
-      });
+      routeGeoJson.geometry.coordinates.forEach(c => { state.cameras.forEach(cam => { if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id); }); });
       finalIntercepts = hitCams.size;
     }
 
-    state.routeLayer.clearLayers();
-    state.dodgeLayer.clearLayers();
-
+    state.routeLayer.clearLayers(); state.dodgeLayer.clearLayers();
     const leafletCoords = routeGeoJson.geometry.coordinates.map(c => [c[1], c[0]]);
     const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
     
     L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
     if (!isAutoRecalc) state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
 
+    // Generate Audio Turn Instructions
+    buildTurnInstructions(leafletCoords);
+
     const distanceMeters = routeGeoJson.properties["track-length"] || routeGeoJson.properties.distance || 0;
     const durationSeconds = routeGeoJson.properties["total-time"] || routeGeoJson.properties.duration || 0;
+    const totalMiles = (distanceMeters * METERS_TO_MILES).toFixed(1);
     
     document.getElementById('route-results').classList.remove('route-results-hidden');
-    document.getElementById('res-distance').textContent = `${(distanceMeters * METERS_TO_MILES).toFixed(1)} mi`;
+    document.getElementById('res-distance').textContent = `${totalMiles} mi`;
     document.getElementById('res-duration').textContent = `${Math.round(durationSeconds / 60)} min`;
     document.getElementById('res-intercepts').textContent = finalIntercepts;
 
-    state.activeRouteCoords = leafletCoords;
-    state.activeDestination = targetCoords;
-    state.activeMode = mode;
+    state.activeRouteCoords = leafletCoords; state.activeDestination = targetCoords; state.activeMode = mode;
 
-  } catch (err) {
-    if (!isAutoRecalc) alert(err.message);
-  } finally {
-    if (!isAutoRecalc) {
-      btn.textContent = 'Generate Navigation Vectors';
-      btn.style.opacity = '1';
-      btn.style.pointerEvents = 'auto';
-    }
+  } catch (err) { if (!isAutoRecalc) alert(err.message); } 
+  finally {
+    if (!isAutoRecalc) { btn.textContent = 'Generate Navigation Vectors'; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
   }
 }
 
 // Ledger & Storage
 function logLedgerEntry(camera) {
-  const entry = {
-    id: `log-${Date.now()}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    hardware: camera.hardware, lat: camera.lat.toFixed(4), lon: camera.lon.toFixed(4)
-  };
-  state.ledger.unshift(entry);
-  if (state.ledger.length > 50) state.ledger.pop();
-  localStorage.setItem('ghostlane_ledger', JSON.stringify(state.ledger));
-  updateLedgerDisplay();
+  const entry = { id: `log-${Date.now()}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), hardware: camera.hardware, lat: camera.lat.toFixed(4), lon: camera.lon.toFixed(4) };
+  state.ledger.unshift(entry); if (state.ledger.length > 50) state.ledger.pop();
+  localStorage.setItem('ghostlane_ledger', JSON.stringify(state.ledger)); updateLedgerDisplay();
 }
 
 function updateLedgerDisplay() {
-  const count = state.ledger.length;
-  document.getElementById('ledger-total-count').textContent = count;
-  let grade = count > 8 ? 'F' : count > 3 ? 'C' : 'A+';
-  let gradeClass = count > 8 ? 'grade-f' : count > 3 ? 'grade-c' : 'grade-a';
-
-  document.getElementById('stat-privacy').textContent = grade;
-  document.getElementById('stat-privacy').className = `hud-value ${gradeClass}`;
-  if (document.getElementById('ledger-grade')) {
-    document.getElementById('ledger-grade').textContent = grade;
-    document.getElementById('ledger-grade').className = gradeClass;
-  }
-
+  const count = state.ledger.length; document.getElementById('ledger-total-count').textContent = count;
+  let grade = count > 8 ? 'F' : count > 3 ? 'C' : 'A+'; let gradeClass = count > 8 ? 'grade-f' : count > 3 ? 'grade-c' : 'grade-a';
+  document.getElementById('stat-privacy').textContent = grade; document.getElementById('stat-privacy').className = `hud-value ${gradeClass}`;
+  if (document.getElementById('ledger-grade')) { document.getElementById('ledger-grade').textContent = grade; document.getElementById('ledger-grade').className = gradeClass; }
   const listEl = document.getElementById('ledger-list');
   if (listEl) {
     if (state.ledger.length === 0) listEl.innerHTML = '<li class="empty-state">No surveillance intercepts recorded today.</li>';
@@ -507,75 +473,48 @@ function updateLedgerDisplay() {
 }
 
 function saveStoredCameras() { localStorage.setItem('ghostlane_nodes', JSON.stringify(state.cameras)); }
-function loadStoredCameras() {
-  const raw = localStorage.getItem('ghostlane_nodes');
-  if (raw) { try { state.cameras = JSON.parse(raw); renderCameraNodes(); } catch (e) { state.cameras = []; } }
-}
+function loadStoredCameras() { const raw = localStorage.getItem('ghostlane_nodes'); if (raw) { try { state.cameras = JSON.parse(raw); renderCameraNodes(); } catch (e) { state.cameras = []; } } }
 
 function toggleLiveRadar() {
-  initAudioEngine();
-  const btn = document.getElementById('btn-toggle-radar');
-
+  initAudioEngine(); const btn = document.getElementById('btn-toggle-radar');
   if (state.watchId !== null) {
-    navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null;
-    btn.textContent = 'START RADAR';
-    btn.classList.remove('btn-radar-active');
-    state.activeRouteCoords = null;
-    state.activeDestination = null;
-    state.routeLayer.clearLayers();
-    if (state.simInterval) clearInterval(state.simInterval);
+    navigator.geolocation.clearWatch(state.watchId); state.watchId = null;
+    btn.textContent = 'START RADAR'; btn.classList.remove('btn-radar-active');
+    state.activeRouteCoords = null; state.activeDestination = null;
+    state.routeLayer.clearLayers(); if (state.simInterval) clearInterval(state.simInterval);
     return;
   }
-
   if (!('geolocation' in navigator)) return alert('Geolocation permissions required for live radar.');
-
-  btn.textContent = 'RADAR LIVE';
-  btn.classList.add('btn-radar-active');
+  btn.textContent = 'RADAR LIVE'; btn.classList.add('btn-radar-active');
 
   state.watchId = navigator.geolocation.watchPosition(
     pos => {
       const { latitude, longitude, heading, speed } = pos.coords;
       const speedMph = speed ? Math.round(speed * 2.23694) : 0;
       const currentHeading = heading !== null && !isNaN(heading) ? Math.round(heading) : 0;
-
       state.position = { lat: latitude, lon: longitude, heading: currentHeading, speed: speed || 0 };
       document.getElementById('stat-speed').innerHTML = `${speedMph} <small>MPH</small>`;
       document.getElementById('stat-heading').innerHTML = `${currentHeading}°`;
 
-      if (!state.userMarker) {
-        state.userMarker = L.circleMarker([latitude, longitude], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
-        if (!state.activeRouteCoords) state.map.setView([latitude, longitude], 15);
-      } else {
-        state.userMarker.setLatLng([latitude, longitude]);
-      }
+      if (!state.userMarker) { state.userMarker = L.circleMarker([latitude, longitude], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map); if (!state.activeRouteCoords) state.map.setView([latitude, longitude], 15); } 
+      else { state.userMarker.setLatLng([latitude, longitude]); }
       evaluateActiveTracking();
     },
-    err => console.warn(`GPS Error: ${err.message}`),
-    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+    err => console.warn(`GPS Error: ${err.message}`), { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
   );
 }
 
 // UI Event Binding
 document.addEventListener('DOMContentLoaded', () => {
-  initMap();
-  document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
-  
-  document.getElementById('btn-sync-mesh').addEventListener('click', () => {
-    const center = state.position ? state.position : state.map.getCenter();
-    syncMeshCameras(center.lat, center.lon || center.lng, 5);
-  });
-  
-  document.getElementById('btn-recenter').addEventListener('click', () => {
-    if (state.position) state.map.setView([state.position.lat, state.position.lon], 16);
-  });
+  initMap(); document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
+  document.getElementById('btn-sync-mesh').addEventListener('click', () => { const center = state.position ? state.position : state.map.getCenter(); syncMeshCameras(center.lat, center.lon || center.lng, 5); });
+  document.getElementById('btn-recenter').addEventListener('click', () => { if (state.position) state.map.setView([state.position.lat, state.position.lon], 16); });
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.drawer-panel').forEach(p => p.classList.add('panel-hidden'));
-      btn.classList.add('active');
-      const tab = btn.getAttribute('data-tab');
+      btn.classList.add('active'); const tab = btn.getAttribute('data-tab');
       if (tab === 'routing-view') document.getElementById('panel-routing').classList.remove('panel-hidden');
       if (tab === 'ledger-view') document.getElementById('panel-ledger').classList.remove('panel-hidden');
       if (tab === 'verify-view') document.getElementById('panel-verify').classList.remove('panel-hidden');
@@ -584,8 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('.btn-close').forEach(btn => {
     btn.addEventListener('click', () => {
-      const panelId = btn.getAttribute('data-close');
-      document.getElementById(panelId).classList.add('panel-hidden');
+      const panelId = btn.getAttribute('data-close'); document.getElementById(panelId).classList.add('panel-hidden');
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       document.querySelector('[data-tab="radar-view"]').classList.add('active');
     });
@@ -594,40 +532,28 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-calculate-route').addEventListener('click', async () => {
     const destInput = document.getElementById('route-dest').value.trim();
     if (!destInput) return alert('Enter a valid destination address or coordinates.');
-
     const mode = document.querySelector('input[name="route-mode"]:checked').value;
     try {
-      let targetCoords;
-      const parts = destInput.split(',').map(s => parseFloat(s.trim()));
+      let targetCoords; const parts = destInput.split(',').map(s => parseFloat(s.trim()));
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) { targetCoords = { lat: parts[0], lon: parts[1] }; } 
       else { targetCoords = await geocodeAddress(destInput); }
-      
       await calculateShadowRoute(targetCoords, mode, false);
     } catch (err) { alert(err.message); }
   });
 
-  // Simulator Button Listener
+  // Simulator Launch Button
   document.getElementById('btn-simulate-route').addEventListener('click', runLiveSimulation);
 
   document.getElementById('btn-submit-node').addEventListener('click', () => {
-    const hardware = document.getElementById('node-hardware').value;
-    const heading = parseInt(document.getElementById('node-heading').value, 10);
-    const fov = parseInt(document.getElementById('node-fov').value, 10);
-    const range = parseInt(document.getElementById('node-range').value, 10) || 400;
-    const mode = document.getElementById('node-coords-mode').value;
-
-    let targetLat, targetLon;
-    if (mode === 'current' && state.position) { targetLat = state.position.lat; targetLon = state.position.lon; }
-    else { const center = state.map.getCenter(); targetLat = center.lat; targetLon = center.lng; }
-
+    const hardware = document.getElementById('node-hardware').value; const heading = parseInt(document.getElementById('node-heading').value, 10);
+    const fov = parseInt(document.getElementById('node-fov').value, 10); const range = parseInt(document.getElementById('node-range').value, 10) || 400;
+    const mode = document.getElementById('node-coords-mode').value; let targetLat, targetLon;
+    if (mode === 'current' && state.position) { targetLat = state.position.lat; targetLon = state.position.lon; } else { const center = state.map.getCenter(); targetLat = center.lat; targetLon = center.lng; }
     state.cameras.push({ id: `custom-${Date.now()}`, lat: targetLat, lon: targetLon, heading, fov, range, hardware, source: 'Community Verified' });
     saveStoredCameras(); renderCameraNodes();
-    document.getElementById('panel-verify').classList.add('panel-hidden');
-    document.querySelector('[data-tab="radar-view"]').classList.add('active');
+    document.getElementById('panel-verify').classList.add('panel-hidden'); document.querySelector('[data-tab="radar-view"]').classList.add('active');
     alert('Node authenticated and written to local mesh!');
   });
 
-  document.getElementById('btn-clear-ledger').addEventListener('click', () => {
-    state.ledger = []; localStorage.removeItem('ghostlane_ledger'); updateLedgerDisplay();
-  });
+  document.getElementById('btn-clear-ledger').addEventListener('click', () => { state.ledger = []; localStorage.removeItem('ghostlane_ledger'); updateLedgerDisplay(); });
 });

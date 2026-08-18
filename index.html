@@ -4,8 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GhostLane™ | Path of Shadows</title>
+  
+  <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
     * {
       box-sizing: border-box;
@@ -13,11 +16,12 @@
       padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
 
     body {
-      background-color: #0b0f19;
-      color: #f1f5f9;
+      background-color: #070a13;
+      color: #f8fafc;
       height: 100vh;
       width: 100vw;
       overflow: hidden;
@@ -25,16 +29,16 @@
       flex-direction: column;
     }
 
-    /* Top Navigation Bar */
+    /* Top Brand Navigation Header */
     header {
       background: rgba(11, 15, 25, 0.95);
-      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
-      padding: 10px 16px;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 8px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       z-index: 1000;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
     }
 
     .brand-container {
@@ -44,41 +48,44 @@
     }
 
     .brand-logo {
-      width: 44px;
-      height: 44px;
+      width: 46px;
+      height: 46px;
       border-radius: 50%;
       object-fit: cover;
       border: 2px solid #38bdf8;
-      box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+      background: #0f172a;
     }
 
     .brand-text h1 {
       font-size: 1.1rem;
-      font-weight: 800;
-      letter-spacing: 1px;
+      font-weight: 900;
+      letter-spacing: 1.2px;
       color: #ffffff;
       text-transform: uppercase;
+      line-height: 1.1;
     }
 
     .brand-text p {
-      font-size: 0.7rem;
+      font-size: 0.68rem;
       color: #38bdf8;
       letter-spacing: 1.5px;
       text-transform: uppercase;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     .status-badge {
       display: flex;
       align-items: center;
       gap: 6px;
-      background: rgba(34, 197, 94, 0.1);
+      background: rgba(34, 197, 94, 0.12);
       border: 1px solid rgba(34, 197, 94, 0.4);
       padding: 6px 12px;
       border-radius: 20px;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: #4ade80;
-      font-weight: 600;
+      font-weight: 700;
+      letter-spacing: 0.5px;
     }
 
     .status-pulse {
@@ -86,13 +93,77 @@
       height: 8px;
       background-color: #22c55e;
       border-radius: 50%;
-      animation: pulse 1.5s infinite;
+      animation: radar-pulse 1.6s infinite;
     }
 
-    @keyframes pulse {
+    @keyframes radar-pulse {
       0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
       70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
       100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+
+    /* Turn-By-Turn Navigation Banner */
+    #nav-banner {
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(11, 15, 25, 0.95) 100%);
+      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 999;
+    }
+
+    .turn-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .turn-icon {
+      width: 40px;
+      height: 40px;
+      background: #0284c7;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(2, 132, 199, 0.4);
+    }
+
+    .turn-details h2 {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .turn-details p {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    .radar-alert-pill {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      padding: 6px 10px;
+      border-radius: 8px;
+      text-align: right;
+    }
+
+    .radar-alert-pill .alert-title {
+      font-size: 0.65rem;
+      color: #f87171;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .radar-alert-pill .alert-dist {
+      font-size: 0.85rem;
+      color: #ffffff;
+      font-weight: 800;
     }
 
     /* Map Interface */
@@ -109,19 +180,19 @@
       background: #050811;
     }
 
-    /* Floating Tactical Overlay */
+    /* Floating Tactical Bottom HUD */
     .hud-card {
       position: absolute;
-      bottom: 24px;
-      left: 16px;
-      right: 16px;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 16px;
-      padding: 16px;
+      bottom: 20px;
+      left: 14px;
+      right: 14px;
+      background: rgba(11, 17, 32, 0.94);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 18px;
+      padding: 14px;
       z-index: 1000;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.75);
     }
 
     .hud-header {
@@ -129,191 +200,395 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     .hud-title {
-      font-size: 0.85rem;
+      font-size: 0.75rem;
       color: #94a3b8;
       text-transform: uppercase;
-      font-weight: 700;
-      letter-spacing: 0.5px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
     }
 
-    .threat-level {
+    .threat-status {
       color: #38bdf8;
-      font-size: 0.85rem;
-      font-weight: 700;
+      font-size: 0.75rem;
+      font-weight: 800;
     }
 
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 14px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
     }
 
     .stat-box {
-      background: rgba(30, 41, 59, 0.6);
+      background: rgba(30, 41, 59, 0.55);
       border: 1px solid rgba(255, 255, 255, 0.05);
       border-radius: 10px;
-      padding: 8px;
+      padding: 8px 4px;
       text-align: center;
     }
 
     .stat-val {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 800;
       color: #ffffff;
     }
 
     .stat-lbl {
-      font-size: 0.65rem;
+      font-size: 0.6rem;
       color: #64748b;
       text-transform: uppercase;
       margin-top: 2px;
+      font-weight: 700;
     }
 
-    .action-btn {
-      width: 100%;
-      background: linear-gradient(135deg, #1d4ed8, #0284c7);
+    /* Controls Grid */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn {
       border: none;
-      color: #ffffff;
       padding: 12px;
       border-radius: 10px;
-      font-size: 0.9rem;
-      font-weight: 700;
+      font-size: 0.82rem;
+      font-weight: 800;
       letter-spacing: 0.5px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      gap: 6px;
+      text-transform: uppercase;
+      transition: all 0.15s ease;
     }
 
-    .action-btn:active {
-      transform: scale(0.98);
+    .btn:active {
+      transform: scale(0.97);
     }
 
-    /* Leaflet Custom Marker Styling */
-    .custom-radar-marker {
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+    }
+
+    .btn-secondary {
+      background: rgba(30, 41, 59, 0.8);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    /* Custom Map Markers */
+    .vehicle-puck {
+      width: 24px;
+      height: 24px;
+      background: #38bdf8;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 14px #38bdf8, 0 0 24px rgba(56, 189, 248, 0.8);
+      position: relative;
+    }
+
+    .vehicle-heading {
+      position: absolute;
+      top: -8px;
+      left: 7px;
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 8px solid #ffffff;
+    }
+
+    .camera-ping-node {
+      width: 20px;
+      height: 20px;
+      background: rgba(239, 68, 68, 0.25);
+      border: 2px solid #ef4444;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #ef4444;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-
-    .radar-ping {
-      width: 16px;
-      height: 16px;
-      background-color: #ef4444;
-      border-radius: 50%;
-      border: 2px solid #ffffff;
-      box-shadow: 0 0 10px #ef4444;
+      font-size: 10px;
+      color: #ffffff;
+      font-weight: 900;
     }
   </style>
 </head>
 <body>
 
+  <!-- Brand Header -->
   <header>
     <div class="brand-container">
-      <img src="logo-gl.png" alt="GhostLane Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/44/0f172a/38bdf8?text=GL'">
+      <img src="logo-gl.png" alt="GhostLane Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/46/0f172a/38bdf8?text=GL'">
       <div class="brand-text">
-        <h1>GhostLane</h1>
+        <h1>GhostLane™</h1>
         <p>Path of Shadows</p>
       </div>
     </div>
     <div class="status-badge">
       <div class="status-pulse"></div>
-      <span>STEALTH ACTIVE</span>
+      <span id="system-status">CLOAK ENGAGED</span>
     </div>
   </header>
 
+  <!-- Turn-By-Turn HUD -->
+  <div id="nav-banner">
+    <div class="turn-info">
+      <div class="turn-icon" id="maneuver-icon">⬆</div>
+      <div class="turn-details">
+        <h2 id="next-maneuver-text">Follow Evasion Vector</h2>
+        <p id="sub-maneuver-text">Remaining on unmonitored corridor</p>
+      </div>
+    </div>
+    <div class="radar-alert-pill">
+      <div class="alert-title">Nearest Trap</div>
+      <div class="alert-dist" id="nearest-trap-dist">0.42 mi</div>
+    </div>
+  </div>
+
+  <!-- Map Canvas -->
   <div id="map-container">
     <div id="map"></div>
 
+    <!-- Floating HUD Overlay -->
     <div class="hud-card">
       <div class="hud-header">
-        <span class="hud-title">Vector Telemetry</span>
-        <span class="threat-level">0 Optical Traps on Route</span>
+        <span class="hud-title">Navigation Telemetry</span>
+        <span class="threat-status" id="threat-status-text">Optical Traps Evaded: 100%</span>
       </div>
 
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-val" id="evasion-rate">100%</div>
-          <div class="stat-lbl">Cloak Index</div>
+          <div class="stat-val" id="stat-speed">38</div>
+          <div class="stat-lbl">MPH</div>
         </div>
         <div class="stat-box">
-          <div class="stat-val" id="traps-bypassed">14</div>
-          <div class="stat-lbl">ALPR Bypassed</div>
+          <div class="stat-val" id="stat-traps">6</div>
+          <div class="stat-lbl">Traps Null</div>
         </div>
         <div class="stat-box">
-          <div class="stat-val">34 ms</div>
-          <div class="stat-lbl">Route Ping</div>
+          <div class="stat-val" id="stat-distance">2.4 mi</div>
+          <div class="stat-lbl">Remaining</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="stat-eta">4 min</div>
+          <div class="stat-lbl">Ghost ETA</div>
         </div>
       </div>
 
-      <button class="action-btn" onclick="recalculateStealthRoute()">
-        <span>REROUTE TO GHOST PATH</span>
-      </button>
+      <div class="controls-grid">
+        <button class="btn btn-primary" id="sim-btn" onclick="toggleSimulation()">
+          <span id="sim-btn-text">Pause Sim</span>
+        </button>
+        <button class="btn btn-secondary" onclick="recalculateStealthPath()">
+          <span>Reroute Evasion</span>
+        </button>
+      </div>
     </div>
   </div>
 
   <script>
-    // Initialize map with dark tiles
-    const initialCoords = [35.4676, -97.5164]; // Default Center
+    // Audio Synthesizer for Tactical Alerts
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq = 880, type = 'sine', duration = 0.12) {
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    // Initialize Map with High-Contrast Dark CartoDB Tiles
+    const startPoint = [35.4676, -97.5164];
     const map = L.map('map', {
       zoomControl: false,
       attributionControl: false
-    }).setView(initialCoords, 14);
+    }).setView(startPoint, 15);
 
-    // High-contrast Dark Navigation Tiles
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       subdomains: 'abcd'
     }).addTo(map);
 
-    // Mock ALPR / Surveillance Camera Markers
-    const cameraLocations = [
-      { coords: [35.4720, -97.5210], label: "Flock ALPR Array #104" },
-      { coords: [35.4630, -97.5100], label: "Surveillance Gantry #082" },
-      { coords: [35.4690, -97.5050], label: "Traffic Monitor Node #331" }
+    // Flock Safety / ALPR Surveillance Network Points
+    const surveillanceCameras = [
+      { coords: [35.4645, -97.5140], name: "Flock ALPR #01 - Northbound" },
+      { coords: [35.4710, -97.5190], name: "ALPR Fixed Gantry #18" },
+      { coords: [35.4745, -97.5120], name: "Flock Safety Node #44" },
+      { coords: [35.4620, -97.5220], name: "Traffic Intercept Camera #09" }
     ];
 
-    const radarIcon = L.divIcon({
-      className: 'custom-radar-marker',
-      html: '<div class="radar-ping"></div>',
-      iconSize: [16, 16]
+    const cameraIcon = L.divIcon({
+      className: 'camera-custom-icon',
+      html: '<div class="camera-ping-node">⚡</div>',
+      iconSize: [20, 20]
     });
 
-    cameraLocations.forEach(cam => {
-      L.marker(cam.coords, { icon: radarIcon })
+    surveillanceCameras.forEach(cam => {
+      // Pin Marker
+      L.marker(cam.coords, { icon: cameraIcon })
         .addTo(map)
-        .bindPopup(`<b>${cam.label}</b><br><span style="color:#ef4444;">Optical Trap Active</span>`);
+        .bindPopup(`<b>${cam.name}</b><br><span style="color:#ef4444;font-weight:bold;">Active Optical Trap Zone</span>`);
+
+      // Surveillance Perimeter Buffer
+      L.circle(cam.coords, {
+        color: '#ef4444',
+        fillColor: '#ef4444',
+        fillOpacity: 0.15,
+        radius: 120,
+        weight: 1,
+        dashArray: '4, 4'
+      }).addTo(map);
     });
 
-    // Mock Active Stealth Path
-    const stealthRouteCoordinates = [
-      [35.4590, -97.5250],
-      [35.4620, -97.5200],
-      [35.4660, -97.5180],
-      [35.4710, -97.5140],
-      [35.4750, -97.5110]
+    // Master Stealth Evasion Waypoints (Avoiding Camera Buffer Cones)
+    const stealthRoute = [
+      [35.4600, -97.5250],
+      [35.4635, -97.5240],
+      [35.4660, -97.5200],
+      [35.4680, -97.5150],
+      [35.4720, -97.5150],
+      [35.4750, -97.5180],
+      [35.4780, -97.5150]
     ];
 
-    const routeLine = L.polyline(stealthRouteCoordinates, {
+    // Render Ghost Path Polyline
+    const pathLine = L.polyline(stealthRoute, {
       color: '#38bdf8',
-      weight: 5,
-      opacity: 0.85,
-      dashArray: '8, 8',
-      lineCap: 'round'
+      weight: 6,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round',
+      dashArray: '10, 8'
     }).addTo(map);
 
-    function recalculateStealthRoute() {
-      const bypassedCount = document.getElementById('traps-bypassed');
-      let current = parseInt(bypassedCount.innerText);
-      bypassedCount.innerText = current + 1;
-      alert("GhostLane: Route optimized. Optical evasion vectors applied.");
+    // Vehicle Navigation Puck
+    const vehicleIcon = L.divIcon({
+      className: 'vehicle-marker-wrapper',
+      html: '<div class="vehicle-puck" id="vehicle-element"><div class="vehicle-heading"></div></div>',
+      iconSize: [24, 24]
+    });
+
+    const vehicleMarker = L.marker(stealthRoute[0], { icon: vehicleIcon }).addTo(map);
+
+    // Simulation Engine State Machine
+    let simIndex = 0;
+    let simProgress = 0;
+    let isSimulating = true;
+    let simTimer = null;
+
+    function runSimulationStep() {
+      if (!isSimulating) return;
+
+      const p1 = stealthRoute[simIndex];
+      const p2 = stealthRoute[simIndex + 1];
+
+      if (!p2) {
+        simIndex = 0;
+        simProgress = 0;
+        return;
+      }
+
+      simProgress += 0.04;
+      if (simProgress >= 1) {
+        simProgress = 0;
+        simIndex++;
+        playBeep(980, 'sine', 0.1);
+        updateTurnInstructions(simIndex);
+      }
+
+      const currentLat = p1[0] + (p2[0] - p1[0]) * simProgress;
+      const currentLng = p1[1] + (p2[1] - p1[1]) * simProgress;
+      const newPos = [currentLat, currentLng];
+
+      vehicleMarker.setLatLng(newPos);
+      map.panTo(newPos, { animate: true, duration: 0.1 });
+
+      // Rotate Vehicle Heading
+      const deltaLat = p2[0] - p1[0];
+      const deltaLng = p2[1] - p1[1];
+      const headingDeg = Math.atan2(deltaLng, deltaLat) * (180 / Math.PI);
+      const vehicleEl = document.getElementById('vehicle-element');
+      if (vehicleEl) {
+        vehicleEl.style.transform = `rotate(${headingDeg}deg)`;
+      }
+
+      // Check Proximity to Surveillance Nodes
+      checkProximityAlerts(newPos);
     }
+
+    function checkProximityAlerts(currentPos) {
+      let minDistance = 9999;
+      surveillanceCameras.forEach(cam => {
+        const d = map.distance(currentPos, cam.coords);
+        if (d < minDistance) minDistance = d;
+      });
+
+      const distInMiles = (minDistance * 0.000621371).toFixed(2);
+      document.getElementById('nearest-trap-dist').innerText = `${distInMiles} mi`;
+
+      if (minDistance < 150) {
+        playBeep(440, 'sawtooth', 0.18);
+        document.getElementById('system-status').innerText = "TRAP PROXIMITY ACTIVE";
+        document.getElementById('system-status').style.color = "#f87171";
+      } else {
+        document.getElementById('system-status').innerText = "CLOAK ENGAGED";
+        document.getElementById('system-status').style.color = "#4ade80";
+      }
+    }
+
+    function updateTurnInstructions(index) {
+      const instructions = [
+        { icon: "⬆", text: "Proceed on Shadow Corridor", sub: "Maintaining optical blind-spot" },
+        { icon: "↱", text: "Turn Right on Vector Ave", sub: "Evading Northbound Flock Node" },
+        { icon: "↰", text: "Bear Left on Evasion Blvd", sub: "Bypassing Gantry #18 trap radius" },
+        { icon: "⬆", text: "Continue straight on Stealth Way", sub: "Route clear of license plate readers" },
+        { icon: "🏁", text: "Arriving at Target Vector", sub: "100% surveillance evasion verified" }
+      ];
+
+      const inst = instructions[index % instructions.length];
+      document.getElementById('maneuver-icon').innerText = inst.icon;
+      document.getElementById('next-maneuver-text').innerText = inst.text;
+      document.getElementById('sub-maneuver-text').innerText = inst.sub;
+    }
+
+    function toggleSimulation() {
+      isSimulating = !isSimulating;
+      const btnText = document.getElementById('sim-btn-text');
+      btnText.innerText = isSimulating ? "Pause Sim" : "Resume Sim";
+    }
+
+    function recalculateStealthPath() {
+      playBeep(1200, 'triangle', 0.2);
+      const statTraps = document.getElementById('stat-traps');
+      statTraps.innerText = parseInt(statTraps.innerText) + 1;
+      alert("GhostLane: Alternative bypass vector calculated. Camera choke-points excluded.");
+    }
+
+    // Run Engine loop at 30fps
+    simTimer = setInterval(runSimulationStep, 100);
   </script>
 </body>
 </html>

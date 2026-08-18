@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: TRUE EXCLUSION-ZONE ROUTING
+// GHOSTLANE CORE ENGINE: EXCLUSION ROUTING & ACTIVE NAVIGATION
 // ==========================================================
 
 const state = {
@@ -14,7 +14,13 @@ const state = {
   activeThreat: null,
   lastWarningTime: 0,
   ledger: JSON.parse(localStorage.getItem('ghostlane_ledger') || '[]'),
-  audioCtx: null
+  audioCtx: null,
+  
+  // Active Navigation State
+  activeRouteCoords: null,
+  activeDestination: null,
+  activeMode: 'ghost',
+  lastRecalcTime: 0
 };
 
 const METERS_TO_FEET = 3.28084;
@@ -77,6 +83,27 @@ function getAzimuth(lat1, lon1, lat2, lon2) {
   const x = Math.cos(lat1 * rad) * Math.sin(lat2 * rad) -
             Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos((lon2 - lon1) * rad);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+// Calculates exact distance from your car to the blue polyline segment
+function distanceToSegmentFeet(pLat, pLon, vLat, vLon, wLat, wLon) {
+  const ftPerDegLat = 364000;
+  const ftPerDegLon = 364000 * Math.cos(pLat * Math.PI / 180);
+
+  const px = pLon * ftPerDegLon; const py = pLat * ftPerDegLat;
+  const vx = vLon * ftPerDegLon; const vy = vLat * ftPerDegLat;
+  const wx = wLon * ftPerDegLon; const wy = wLat * ftPerDegLat;
+
+  const l2 = (wx - vx) ** 2 + (wy - vy) ** 2;
+  if (l2 === 0) return Math.sqrt((px - vx) ** 2 + (py - vy) ** 2);
+  
+  let t = ((px - vx) * (wx - vx) + (py - vy) * (wy - vy)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  
+  const projX = vx + t * (wx - vx);
+  const projY = vy + t * (wy - vy);
+  
+  return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
 }
 
 function computeFovPolygonPoints(lat, lon, headingDeg, fovDeg, distanceFeet = 400) {
@@ -241,63 +268,99 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   }
 }
 
-// Radar Engine
-function evaluateDirectionalAlerts() {
-  if (!state.position || state.cameras.length === 0) return;
-
+// Radar & Off-Route Engine
+function evaluateActiveTracking() {
+  if (!state.position) return;
   const { lat, lon, heading, speed } = state.position;
-  const alertThresholdFeet = 1000;
   const now = Date.now();
 
-  let closestIntercept = null;
-  let minDistance = Infinity;
+  // 1. Camera Intercept Radar
+  if (state.cameras.length > 0) {
+    const alertThresholdFeet = 1000;
+    let closestIntercept = null;
+    let minDistance = Infinity;
 
-  state.cameras.forEach(cam => {
-    const distFeet = getDistanceFeet(lat, lon, cam.lat, cam.lon);
+    state.cameras.forEach(cam => {
+      const distFeet = getDistanceFeet(lat, lon, cam.lat, cam.lon);
+      if (distFeet < alertThresholdFeet && distFeet < minDistance) {
+        const bearingToCamera = getAzimuth(lat, lon, cam.lat, cam.lon);
+        const bearingToDriver = getAzimuth(cam.lat, cam.lon, lat, lon);
 
-    if (distFeet < alertThresholdFeet && distFeet < minDistance) {
-      const bearingToCamera = getAzimuth(lat, lon, cam.lat, cam.lon);
-      const bearingToDriver = getAzimuth(cam.lat, cam.lon, lat, lon);
+        let approachAngleDiff = Math.abs(heading - bearingToCamera);
+        if (approachAngleDiff > 180) approachAngleDiff = 360 - approachAngleDiff;
 
-      let approachAngleDiff = Math.abs(heading - bearingToCamera);
-      if (approachAngleDiff > 180) approachAngleDiff = 360 - approachAngleDiff;
+        let lensAngleDiff = Math.abs(cam.heading - bearingToDriver);
+        if (lensAngleDiff > 180) lensAngleDiff = 360 - lensAngleDiff;
 
-      let lensAngleDiff = Math.abs(cam.heading - bearingToDriver);
-      if (lensAngleDiff > 180) lensAngleDiff = 360 - lensAngleDiff;
+        const inLensFov = lensAngleDiff <= ((cam.fov || 60) / 2);
+        const isApproaching = approachAngleDiff <= 45 || speed < 2;
 
-      const inLensFov = lensAngleDiff <= ((cam.fov || 60) / 2);
-      const isApproaching = approachAngleDiff <= 45 || speed < 2;
+        if (inLensFov && isApproaching) {
+          minDistance = distFeet;
+          closestIntercept = { ...cam, distance: Math.round(distFeet) };
+        }
+      }
+    });
 
-      if (inLensFov && isApproaching) {
-        minDistance = distFeet;
-        closestIntercept = { ...cam, distance: Math.round(distFeet) };
+    const banner = document.getElementById('threat-alert');
+    if (closestIntercept) {
+      banner.classList.remove('alert-hidden');
+      document.getElementById('alert-title').textContent = `${closestIntercept.hardware.toUpperCase()}`;
+      document.getElementById('alert-subtitle').textContent = `Optical Intercept Ahead (${closestIntercept.distance} ft)`;
+      document.getElementById('alert-countdown').textContent = `${closestIntercept.distance} ft`;
+
+      if (now - state.lastWarningTime > 7000 || state.activeThreat !== closestIntercept.id) {
+        playRadarSweepBeep();
+        speakVoiceAlert(`Warning. ${closestIntercept.hardware} ahead in ${closestIntercept.distance} feet.`);
+        logLedgerEntry(closestIntercept);
+        state.lastWarningTime = now;
+        state.activeThreat = closestIntercept.id;
+      }
+    } else {
+      banner.classList.add('alert-hidden');
+      state.activeThreat = null;
+    }
+  }
+
+  // 2. Waze-Style Active Navigation tracking
+  if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination) {
+    
+    // Auto-center map on car while driving
+    state.map.setView([lat, lon], 17);
+
+    // Arrival Check
+    let distToDest = getDistanceFeet(lat, lon, state.activeDestination.lat, state.activeDestination.lon);
+    if (distToDest < 150) {
+      speakVoiceAlert("You have arrived at your zero-trace destination.");
+      state.activeRouteCoords = null;
+      state.activeDestination = null;
+      state.routeLayer.clearLayers();
+      state.dodgeLayer.clearLayers();
+      return;
+    }
+
+    // Off-Route Check
+    let minRouteDist = Infinity;
+    for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
+      let p1 = state.activeRouteCoords[i];
+      let p2 = state.activeRouteCoords[i + 1];
+      let d = distanceToSegmentFeet(lat, lon, p1[0], p1[1], p2[0], p2[1]);
+      if (d < minRouteDist) minRouteDist = d;
+    }
+
+    // If you stray more than 200 feet from the blue line, auto-recalculate
+    if (minRouteDist > 200) {
+      if (now - state.lastRecalcTime > 15000) { // Prevent spamming the server
+        speakVoiceAlert("Off route. Recalculating evasion vectors.");
+        state.lastRecalcTime = now;
+        calculateShadowRoute(state.activeDestination, state.activeMode, true); // true = isAutoRecalc
       }
     }
-  });
-
-  const banner = document.getElementById('threat-alert');
-
-  if (closestIntercept) {
-    banner.classList.remove('alert-hidden');
-    document.getElementById('alert-title').textContent = `${closestIntercept.hardware.toUpperCase()}`;
-    document.getElementById('alert-subtitle').textContent = `Optical Intercept Ahead (${closestIntercept.distance} ft)`;
-    document.getElementById('alert-countdown').textContent = `${closestIntercept.distance} ft`;
-
-    if (now - state.lastWarningTime > 7000 || state.activeThreat !== closestIntercept.id) {
-      playRadarSweepBeep();
-      speakVoiceAlert(`Warning. ${closestIntercept.hardware} ahead in ${closestIntercept.distance} feet.`);
-      logLedgerEntry(closestIntercept);
-      state.lastWarningTime = now;
-      state.activeThreat = closestIntercept.id;
-    }
-  } else {
-    banner.classList.add('alert-hidden');
-    state.activeThreat = null;
   }
 }
 
 // NEW EXCLUSION-ZONE ENGINE (Server-Side Blockade)
-async function calculateShadowRoute(targetCoords, mode = 'ghost') {
+async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc = false) {
   if (!state.position) {
     throw new Error('Active GPS radar is required. Tap START RADAR first.');
   }
@@ -306,45 +369,40 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
   const end = targetCoords;
   const btn = document.getElementById('btn-calculate-route');
 
-  // Verify Destination Safety
-  let destInCone = state.cameras.some(c => getDistanceFeet(end.lat, end.lon, c.lat, c.lon) < 400);
-  if (destInCone && mode === 'ghost') {
-    alert("CRITICAL: Your exact destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
+  if (!isAutoRecalc) {
+    let destInCone = state.cameras.some(c => getDistanceFeet(end.lat, end.lon, c.lat, c.lon) < 400);
+    if (destInCone && mode === 'ghost') {
+      alert("CRITICAL: Your exact destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
+    }
+    btn.textContent = 'Threading Zero-Trace Route...';
+    btn.style.opacity = '0.7';
+    btn.style.pointerEvents = 'none';
   }
-
-  btn.textContent = 'Threading Zero-Trace Route...';
-  btn.style.opacity = '0.7';
-  btn.style.pointerEvents = 'none';
 
   try {
     let routeGeoJson = null;
     let finalIntercepts = 0;
 
     if (mode === 'ghost') {
-      // 1. Filter cameras to only those somewhat near the route to save URL length
       const routeMidLat = (start.lat + end.lat) / 2;
       const routeMidLon = (start.lon + end.lon) / 2;
-      const maxDist = getDistanceFeet(start.lat, start.lon, end.lat, end.lon) + 26400; // route dist + 5 miles
+      const maxDist = getDistanceFeet(start.lat, start.lon, end.lat, end.lon) + 26400;
 
       const relevantCameras = state.cameras.filter(cam => {
         return getDistanceFeet(routeMidLat, routeMidLon, cam.lat, cam.lon) < maxDist;
       });
 
-      // 2. Build the 'nogos' string (lon,lat,radius_in_meters). 150m is a ~500ft exclusion wall.
       const nogos = relevantCameras.map(c => `${c.lon.toFixed(5)},${c.lat.toFixed(5)},150`).join('|');
-
-      // 3. Ping the BRouter Backend (Natively supports avoidance mapping)
       const brouterUrl = `https://brouter.de/brouter?lonlats=${start.lon},${start.lat}|${end.lon},${end.lat}&nogos=${nogos}&profile=car-eco&format=geojson`;
 
       const res = await fetch(brouterUrl);
-      if (!res.ok) throw new Error("The zero-trace engine could not find a path around this many cameras. They form a complete physical blockade across all roads.");
+      if (!res.ok) throw new Error("The zero-trace engine could not find a path around this many cameras. They form a complete physical blockade.");
       
       const data = await res.json();
       if (!data.features || data.features.length === 0) throw new Error("No safe route exists.");
       
       routeGeoJson = data.features[0];
 
-      // Verify intercepts purely for the HUD display
       let hitCams = new Set();
       routeGeoJson.geometry.coordinates.forEach(c => {
         state.cameras.forEach(cam => {
@@ -354,22 +412,16 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
       finalIntercepts = hitCams.size;
 
     } else {
-      // Standard Fastest Route Engine (OSRM)
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=full&geometries=geojson`;
       const res = await fetch(osrmUrl);
       const data = await res.json();
       if (!data.routes || data.routes.length === 0) throw new Error("No route found.");
       
-      // Format OSRM to match the rendering code
       routeGeoJson = {
          geometry: data.routes[0].geometry,
-         properties: {
-             "track-length": data.routes[0].distance,
-             "total-time": data.routes[0].duration
-         }
+         properties: { "track-length": data.routes[0].distance, "total-time": data.routes[0].duration }
       };
 
-      // Verify intercepts purely for the HUD display
       let hitCams = new Set();
       routeGeoJson.geometry.coordinates.forEach(c => {
         state.cameras.forEach(cam => {
@@ -379,7 +431,7 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
       finalIntercepts = hitCams.size;
     }
 
-    // Draw the final Map
+    // Draw the Map
     state.routeLayer.clearLayers();
     state.dodgeLayer.clearLayers();
 
@@ -387,39 +439,46 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
     const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
     
     L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
-    state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
+    
+    if (!isAutoRecalc) {
+      state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
+    }
 
-    // Extract Distance & Duration from whatever engine was used
     const distanceMeters = routeGeoJson.properties["track-length"] || routeGeoJson.properties.distance || 0;
     const durationSeconds = routeGeoJson.properties["total-time"] || routeGeoJson.properties.duration || 0;
-
     const totalMiles = (distanceMeters * METERS_TO_MILES).toFixed(1);
+    
     document.getElementById('route-results').classList.remove('route-results-hidden');
     document.getElementById('res-distance').textContent = `${totalMiles} mi`;
     document.getElementById('res-duration').textContent = `${Math.round(durationSeconds / 60)} min`;
     document.getElementById('res-intercepts').textContent = finalIntercepts;
 
-    // Auto-Dismiss Drawer
+    // Set Active Navigation State
+    state.activeRouteCoords = leafletCoords;
+    state.activeDestination = targetCoords;
+    state.activeMode = mode;
+
     document.getElementById('panel-routing').classList.add('panel-hidden');
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('[data-tab="radar-view"]').classList.add('active');
 
-    setTimeout(() => {
-      if (mode === 'ghost') {
-        if (finalIntercepts > 0) {
-          alert(`Grid saturation warning: You are boxed in. The destination or origin forces you through ${finalIntercepts} camera(s).`);
-        } else {
-          alert(`True Zero Trace Achieved. Engine explicitly locked out all camera coordinates from the map algorithm.`);
+    if (!isAutoRecalc) {
+      setTimeout(() => {
+        if (mode === 'ghost') {
+          if (finalIntercepts > 0) alert(`Grid saturation warning: You are boxed in. The destination or origin forces you through ${finalIntercepts} camera(s).`);
+          else alert(`True Zero Trace Achieved. Engine explicitly locked out all camera coordinates. Drive carefully.`);
         }
-      }
-    }, 600);
+      }, 600);
+    }
 
   } catch (err) {
-    alert(err.message);
+    if (!isAutoRecalc) alert(err.message);
   } finally {
-    btn.textContent = 'Generate Navigation Vectors';
-    btn.style.opacity = '1';
-    btn.style.pointerEvents = 'auto';
+    if (!isAutoRecalc) {
+      btn.textContent = 'Generate Navigation Vectors';
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    }
   }
 }
 
@@ -473,6 +532,12 @@ function toggleLiveRadar() {
     state.watchId = null;
     btn.textContent = 'START RADAR';
     btn.classList.remove('btn-radar-active');
+    
+    // Clear Active Nav
+    state.activeRouteCoords = null;
+    state.activeDestination = null;
+    state.routeLayer.clearLayers();
+    
     return;
   }
 
@@ -493,11 +558,12 @@ function toggleLiveRadar() {
 
       if (!state.userMarker) {
         state.userMarker = L.circleMarker([latitude, longitude], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
-        state.map.setView([latitude, longitude], 15);
+        if (!state.activeRouteCoords) state.map.setView([latitude, longitude], 15);
       } else {
         state.userMarker.setLatLng([latitude, longitude]);
       }
-      evaluateDirectionalAlerts();
+      
+      evaluateActiveTracking();
     },
     err => console.warn(`GPS Error: ${err.message}`),
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
@@ -545,12 +611,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!destInput) return alert('Enter a valid destination address or coordinates.');
 
     const mode = document.querySelector('input[name="route-mode"]:checked').value;
-    const btn = document.getElementById('btn-calculate-route');
     
-    btn.textContent = 'Threading Zero-Trace Route...';
-    btn.style.opacity = '0.7';
-    btn.style.pointerEvents = 'none';
-
     try {
       let targetCoords;
       const parts = destInput.split(',').map(s => parseFloat(s.trim()));
@@ -560,13 +621,9 @@ document.addEventListener('DOMContentLoaded', () => {
         targetCoords = await geocodeAddress(destInput);
       }
       
-      await calculateShadowRoute(targetCoords, mode);
+      await calculateShadowRoute(targetCoords, mode, false);
     } catch (err) {
       alert(err.message);
-    } finally {
-      btn.textContent = 'Generate Navigation Vectors';
-      btn.style.opacity = '1';
-      btn.style.pointerEvents = 'auto';
     }
   });
 

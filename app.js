@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: STABLE PUCK VECTOR & STATE ISOLATION
+// GHOSTLANE CORE ENGINE: CLEAN STABLE ROUTING & HUD CONTROLS
 // ==========================================================
 
 const state = {
@@ -216,7 +216,7 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   finally { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
 }
 
-// Relative Turn Predictor
+// Turn Predictor
 function buildTurnInstructions(coords) {
   state.turnWaypoints = [];
   const minDistanceBetweenTurnsFeet = 200; 
@@ -250,13 +250,12 @@ function buildTurnInstructions(coords) {
   }
 }
 
-// Radar, Visual Turn HUD & Active Navigation Tracking
+// Radar & Tracking Loop
 function evaluateActiveTracking(isSimulation = false) {
   if (!state.position) return;
   const { lat, lon, heading, speed } = state.position;
   const now = Date.now();
 
-  // 1. Camera Intercept Radar
   if (state.cameras.length > 0) {
     const alertThresholdFeet = 1000;
     let closestIntercept = null;
@@ -304,7 +303,6 @@ function evaluateActiveTracking(isSimulation = false) {
     }
   }
 
-  // 2. Visual Turn HUD & Audio Navigation
   const turnHud = document.getElementById('turn-hud');
   
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination && turnHud) {
@@ -353,7 +351,6 @@ function evaluateActiveTracking(isSimulation = false) {
       return;
     }
 
-    // Off-Route Check
     if (!isSimulation) {
       let minRouteDist = Infinity;
       for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
@@ -387,13 +384,12 @@ function stopSimulation() {
   btn.classList.remove('btn-radar-active', 'btn-radar-sim');
 }
 
-// LIVE SIMULATOR ENGINE (Isolated Loop with Dynamic Throttle)
+// Simulator Engine
 function runLiveSimulation() {
   if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) {
     return alert("You must generate a Shadow Route first before running the simulator.");
   }
   
-  // Stop real GPS and clean up
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId);
     state.watchId = null;
@@ -481,7 +477,7 @@ function runLiveSimulation() {
   }, tickRateMs); 
 }
 
-// EXCLUSION-ZONE ROUTING ENGINE
+// Exclusion Routing Engine
 async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc = false) {
   if (!state.position) throw new Error('Active GPS radar is required. Tap START RADAR first.');
   const start = state.position; 
@@ -555,6 +551,11 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
     state.activeDestination = targetCoords; 
     state.activeMode = mode;
     
+    // Auto-Dismiss Drawer immediately to reveal map and route results
+    document.getElementById('panel-routing').classList.add('panel-hidden');
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('[data-tab="radar-view"]').classList.add('active');
+
     evaluateActiveTracking(isAutoRecalc);
 
   } catch (err) { if (!isAutoRecalc) alert(err.message); } 
@@ -577,6 +578,7 @@ function logLedgerEntry(camera) {
 function updateLedgerDisplay() {
   const count = state.ledger.length; document.getElementById('ledger-total-count').textContent = count;
   let grade = count > 8 ? 'F' : count > 3 ? 'C' : 'A+'; let gradeClass = count > 8 ? 'grade-f' : count > 3 ? 'grade-c' : 'grade-a';
+
   document.getElementById('stat-privacy').textContent = grade; document.getElementById('stat-privacy').className = `hud-value ${gradeClass}`;
   if (document.getElementById('ledger-grade')) { document.getElementById('ledger-grade').textContent = grade; document.getElementById('ledger-grade').className = gradeClass; }
   const listEl = document.getElementById('ledger-list');
@@ -594,7 +596,6 @@ function toggleLiveRadar() {
   const btn = document.getElementById('btn-toggle-radar');
   const turnHud = document.getElementById('turn-hud');
 
-  // If simulation is active, clicking this button stops the demo
   if (state.isSimulating) {
     stopSimulation();
     return;

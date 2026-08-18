@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: EXCLUSION ROUTING & DYNAMIC SIMULATOR
+// GHOSTLANE CORE ENGINE: HUD FAIL-SAFE & DYNAMIC SIMULATOR
 // ==========================================================
 
 const state = {
@@ -289,7 +289,7 @@ function evaluateActiveTracking(isSimulation = false) {
   // 2. Active Navigation HUD & Audio Turn-by-Turn
   const turnHud = document.getElementById('turn-hud');
   
-  if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination) {
+  if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination && turnHud) {
     state.map.setView([lat, lon], 17, { animate: false });
 
     // Find the next upcoming turn
@@ -300,13 +300,11 @@ function evaluateActiveTracking(isSimulation = false) {
        if (upcomingTurn) {
            let distToTurn = getDistanceFeet(lat, lon, upcomingTurn.lat, upcomingTurn.lon);
            
-           // Update Visual HUD
            document.getElementById('turn-direction').textContent = `Turn ${upcomingTurn.type}`;
            document.getElementById('turn-distance').textContent = `${Math.round(distToTurn)} ft`;
            document.getElementById('turn-icon').textContent = upcomingTurn.type === 'left' ? '⬅️' : '➡️';
            turnHud.classList.remove('turn-hidden');
 
-           // Handle Audio Triggers & Passing
            if (distToTurn < 100) {
                upcomingTurn.passed = true;
            } else if (distToTurn < 300 && !upcomingTurn.announced250) {
@@ -319,7 +317,7 @@ function evaluateActiveTracking(isSimulation = false) {
        }
     }
 
-    // Arrival Check
+    // Arrival Check 
     let distToDest = getDistanceFeet(lat, lon, state.activeDestination.lat, state.activeDestination.lon);
     if (!upcomingTurn || distToDest < 1000) {
         document.getElementById('turn-direction').textContent = `Destination Ahead`;
@@ -355,7 +353,7 @@ function evaluateActiveTracking(isSimulation = false) {
       }
     }
   } else {
-    turnHud.classList.add('turn-hidden');
+    if(turnHud) turnHud.classList.add('turn-hidden');
   }
 }
 
@@ -388,33 +386,30 @@ function runLiveSimulation() {
     let p1 = coords[currentSegIdx]; 
     let p2 = coords[currentSegIdx + 1];
 
-    // -- DYNAMIC THROTTLE LOGIC --
     let upcomingTurn = (state.turnWaypoints || []).find(t => !t.passed);
     let targetLat = upcomingTurn ? upcomingTurn.lat : state.activeDestination.lat;
     let targetLon = upcomingTurn ? upcomingTurn.lon : state.activeDestination.lon;
     
     let distToTarget = getDistanceFeet(p1[0], p1[1], targetLat, targetLon);
     
-    let speedFps = 66; // Baseline 45 MPH
+    let speedFps = 66; 
     let displayMph = 45;
 
-    // Shift gears based on distance to the next event
     if (distToTarget > 2500) {
-       speedFps = 586; // 400 MPH (Hyper-Drive)
+       speedFps = 586; // 400 MPH
        displayMph = 400;
     } else if (distToTarget > 1200) {
-       speedFps = 220; // 150 MPH (Decelerating)
+       speedFps = 220; // 150 MPH
        displayMph = 150;
     } else if (distToTarget > 600) {
-       speedFps = 102; // 70 MPH (Approaching Warning Zone)
+       speedFps = 102; // 70 MPH
        displayMph = 70;
     } else {
-       speedFps = 51;  // 35 MPH (Taking the turn smoothly)
+       speedFps = 51;  // 35 MPH
        displayMph = 35;
     }
 
     let distPerTick = speedFps * (tickRateMs / 1000);
-
     let segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
     distTraveledOnSeg += distPerTick;
 
@@ -431,7 +426,6 @@ function runLiveSimulation() {
     let currentLon = p1[1] + (p2[1] - p1[1]) * ratio;
     let currentHeading = getAzimuth(p1[0], p1[1], p2[0], p2[1]);
 
-    // Speed calculation for HUD (0.44704 m/s = 1 mph)
     state.position = { lat: currentLat, lon: currentLon, heading: currentHeading, speed: displayMph * 0.44704 };
     
     document.getElementById('stat-speed').innerHTML = `${displayMph} <small>SIM</small>`;
@@ -544,12 +538,14 @@ function loadStoredCameras() { const raw = localStorage.getItem('ghostlane_nodes
 
 function toggleLiveRadar() {
   initAudioEngine(); const btn = document.getElementById('btn-toggle-radar');
+  const turnHud = document.getElementById('turn-hud');
+  
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId); state.watchId = null;
     btn.textContent = 'START RADAR'; btn.classList.remove('btn-radar-active');
     state.activeRouteCoords = null; state.activeDestination = null;
     state.routeLayer.clearLayers(); if (state.simInterval) clearInterval(state.simInterval);
-    document.getElementById('turn-hud').classList.add('turn-hidden');
+    if(turnHud) turnHud.classList.add('turn-hidden');
     return;
   }
   if (!('geolocation' in navigator)) return alert('Geolocation permissions required for live radar.');

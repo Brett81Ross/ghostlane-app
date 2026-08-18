@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: EXTREME EVASION MATRIX (FEET / MILES)
+// GHOSTLANE CORE ENGINE: RADIAL BRUTE-FORCE EVASION & UI FIX
 // ==========================================================
 
 const state = {
@@ -78,7 +78,7 @@ function getAzimuth(lat1, lon1, lat2, lon2) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-// Mathematical Detour Generator (Finds points far away from the direct path)
+// Mathematical Detour Generator (Radial Sweep)
 function getDestinationPoint(lat, lon, bearing, distanceFeet) {
   const R_FEET = 20902231;
   const d = distanceFeet / R_FEET;
@@ -210,11 +210,11 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
           break;
         }
       } catch (e) {
-        console.warn(`Server ${url} failed. Rerouting to backup...`);
+        console.warn(`Server ${url} failed. Rerouting...`);
       }
     }
 
-    if (!data) throw new Error('All database servers are currently busy or blocked by your browser.');
+    if (!data) throw new Error('All database servers are busy.');
 
     const fetched = data.elements.map(el => {
       let heading = 0;
@@ -223,21 +223,12 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
       }
       
       let type = "Surveillance Node";
-      if (el.tags && el.tags['surveillance:type']) {
-        type = el.tags['surveillance:type'];
-      } else if (el.tags && el.tags['highway'] === 'speed_camera') {
-        type = 'Speed Camera';
-      }
+      if (el.tags && el.tags['surveillance:type']) type = el.tags['surveillance:type'];
+      else if (el.tags && el.tags['highway'] === 'speed_camera') type = 'Speed Camera';
 
       return {
-        id: `osm-${el.id}`,
-        lat: el.lat,
-        lon: el.lon,
-        heading: heading,
-        fov: 60,
-        range: 400,
-        hardware: type.toUpperCase(),
-        source: 'OSM Verified'
+        id: `osm-${el.id}`, lat: el.lat, lon: el.lon, heading: heading, fov: 60, range: 400,
+        hardware: type.toUpperCase(), source: 'OSM Verified'
       };
     });
 
@@ -252,14 +243,10 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
     saveStoredCameras();
     renderCameraNodes();
     
-    if (newCount > 0) {
-      alert(`Mesh Sync Complete. Discovered ${newCount} surveillance nodes.`);
-    } else {
-      alert(`Mesh Sync Complete. No new cameras found in this radius.`);
-    }
+    if (newCount > 0) alert(`Mesh Sync Complete. Discovered ${newCount} surveillance nodes.`);
+    else alert(`Mesh Sync Complete. No new cameras found.`);
   } catch (err) {
-    console.error('Failed to sync mesh data:', err);
-    alert(`Connection Error: ${err.message}. If you are using Brave Browser, please turn Shields OFF for this site.`);
+    alert(`Connection Error: ${err.message}.`);
   } finally {
     btn.style.opacity = '1';
     btn.style.pointerEvents = 'auto';
@@ -321,7 +308,7 @@ function evaluateDirectionalAlerts() {
   }
 }
 
-// NEW Extreme Evasion Routing Matrix (Avoids All Cameras, Ignoring ETA)
+// NEW Radial Brute-Force Evasion Routing
 async function calculateShadowRoute(targetCoords, mode = 'ghost') {
   if (!state.position) {
     throw new Error('Active GPS radar is required. Tap START RADAR first.');
@@ -331,7 +318,7 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
   const end = targetCoords;
   let evaluatedRoutes = [];
 
-  // Helper Engine to fetch and score a batch of routes
+  // Helper function to test a specific path
   async function fetchAndScoreRoutes(waypoints = []) {
     let coordsString = `${start.lon},${start.lat}`;
     waypoints.forEach(wp => { coordsString += `;${wp.lon},${wp.lat}`; });
@@ -352,7 +339,7 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
         coordinates.forEach(coord => {
           const [rLon, rLat] = coord;
           state.cameras.forEach(cam => {
-            // Buffer zone: If path comes within 300 feet of a camera, it's busted.
+            // Buffer zone: 300 feet from lens center
             if (getDistanceFeet(rLat, rLon, cam.lat, cam.lon) < 300) {
               interceptedCamIds.add(cam.id);
             }
@@ -371,100 +358,102 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost') {
     }
   }
 
-  // 1. Initial Standard Ping (Direct paths)
+  // 1. Initial Direct Ping
   await fetchAndScoreRoutes();
 
   if (evaluatedRoutes.length === 0) throw new Error('No drivable route discovered.');
 
-  // 2. Extreme Evasion Matrix Trigger (Only if Ghost mode is on and cameras are hit)
+  // 2. Radial Sweep Brute-Force (Only if Ghost mode is on and cameras are hit)
   if (mode === 'ghost') {
     evaluatedRoutes.sort((a, b) => a.intercepts - b.intercepts);
 
     if (evaluatedRoutes[0].intercepts > 0) {
-      document.getElementById('btn-calculate-route').textContent = 'Evasion Matrix Active...';
+      document.getElementById('btn-calculate-route').textContent = 'Brute-Forcing 360° Evasion Grid...';
 
-      // Find the direct center point between you and your destination
       const midLat = (start.lat + end.lat) / 2;
       const midLon = (start.lon + end.lon) / 2;
-      const mainBearing = getAzimuth(start.lat, start.lon, end.lat, end.lon);
 
-      // Force radical detours completely out of the way: 1.5 miles, 3.5 miles, and 6 miles laterally
-      const detourDistancesFeet = [7920, 18480, 31680];
+      // Sweep 8 angles (every 45 degrees) at 3 massive distance tiers
+      const detourDistancesFeet = [10560, 26400, 52800]; // 2 miles, 5 miles, 10 miles
+      const sweepAngles = [0, 45, 90, 135, 180, 225, 270, 315];
 
+      let foundZeroTrace = false;
+
+      // Sequential sweep to find a zero-trace route
       for (let dist of detourDistancesFeet) {
-        // Point deeply to the left of the main route
-        const wpLeft = getDestinationPoint(midLat, midLon, (mainBearing - 90 + 360) % 360, dist);
-        // Point deeply to the right of the main route
-        const wpRight = getDestinationPoint(midLat, midLon, (mainBearing + 90) % 360, dist);
+        if (foundZeroTrace) break; // Break early if we found a perfect route
 
-        // Ping OSRM to route through these deep detours
-        await fetchAndScoreRoutes([wpLeft]);
-        await fetchAndScoreRoutes([wpRight]);
+        for (let angle of sweepAngles) {
+          const waypoint = getDestinationPoint(midLat, midLon, angle, dist);
+          await fetchAndScoreRoutes([waypoint]);
 
-        // Sort again. If we found a zero-trace route, stop processing immediately to save time.
-        evaluatedRoutes.sort((a, b) => a.intercepts - b.intercepts);
-        if (evaluatedRoutes[0].intercepts === 0) {
-          break;
+          // Check if the route we just tested scored a 0
+          evaluatedRoutes.sort((a, b) => a.intercepts - b.intercepts);
+          if (evaluatedRoutes[0].intercepts === 0) {
+            foundZeroTrace = true;
+            break; // Stop querying immediately
+          }
         }
       }
     }
   }
 
-  // 3. Final Sorting & Execution
+  // 3. Final Sorting & Map Rendering
   if (mode === 'ghost') {
-    // Sort strictly by cameras first. If tied, pick the shortest of the evasion routes.
     evaluatedRoutes.sort((a, b) => {
       if (a.intercepts !== b.intercepts) return a.intercepts - b.intercepts;
       return a.duration - b.duration;
     });
   } else {
-    // Fastest mode: ignore cameras entirely and sort by duration
-    evaluatedRoutes.sort((a, b) => a.duration - b.duration);
+    evaluatedRoutes.sort((a, b) => a.duration - b.duration); // Fastest mode
   }
 
   const bestRoute = evaluatedRoutes[0];
   state.routeLayer.clearLayers();
 
-  // Draw the rejected, dangerous alternate routes faintly
+  // Draw dangerous alternate routes faintly
   evaluatedRoutes.forEach(routeObj => {
     if (routeObj === bestRoute) return;
     const altLeafletCoords = routeObj.coordinates.map(c => [c[1], c[0]]);
     L.polyline(altLeafletCoords, { color: '#334155', weight: 4, opacity: 0.3, dashArray: '8, 8' }).addTo(state.routeLayer);
   });
 
-  // Draw the thick winning route
+  // Draw thick winning route
   const leafletCoords = bestRoute.coordinates.map(c => [c[1], c[0]]);
   const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
   L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
   
-  // Zoom out slightly more to show extreme detours
   state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
 
-  // Update UI Stats
+  // Update Stats Sidebar
   const totalMiles = (bestRoute.distance * METERS_TO_MILES).toFixed(1);
   document.getElementById('route-results').classList.remove('route-results-hidden');
   document.getElementById('res-distance').textContent = `${totalMiles} mi`;
   document.getElementById('res-duration').textContent = `${Math.round(bestRoute.duration / 60)} min`;
   document.getElementById('res-intercepts').textContent = bestRoute.intercepts;
 
-  // Alerts
-  if (mode === 'ghost') {
-     if (bestRoute.intercepts > 0) {
-        setTimeout(() => { alert(`Extreme Evasion Matrix exhausted. The local grid is heavily saturated. Safest route still passes ${bestRoute.intercepts} camera(s).`); }, 500);
-     } else if (bestRoute.duration > evaluatedRoutes.find(r => true).duration + 300) {
-        setTimeout(() => { alert(`Complete evasion achieved. You are taking a heavy detour to maintain zero trace.`); }, 500);
-     }
-  }
+  // AUTO-DISMISS THE UI DRAWER TO SHOW THE MAP
+  document.getElementById('panel-routing').classList.add('panel-hidden');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-tab="radar-view"]').classList.add('active');
+
+  // Delay the alert so the map has time to render visually first
+  setTimeout(() => {
+    if (mode === 'ghost') {
+      if (bestRoute.intercepts > 0) {
+        alert(`Grid saturation warning: Geographically impossible to achieve zero trace. Best available route forces you through a geographic choke point with ${bestRoute.intercepts} camera(s).`);
+      } else if (bestRoute.duration > evaluatedRoutes[evaluatedRoutes.length - 1].duration + 300) {
+        alert(`Complete evasion achieved. You are taking a heavy detour to maintain zero trace.`);
+      }
+    }
+  }, 600);
 }
 
 // Ledger & Storage
 function logLedgerEntry(camera) {
   const entry = {
-    id: `log-${Date.now()}`,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    hardware: camera.hardware,
-    lat: camera.lat.toFixed(4),
-    lon: camera.lon.toFixed(4)
+    id: `log-${Date.now()}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    hardware: camera.hardware, lat: camera.lat.toFixed(4), lon: camera.lon.toFixed(4)
   };
   state.ledger.unshift(entry);
   if (state.ledger.length > 50) state.ledger.pop();
@@ -475,7 +464,6 @@ function logLedgerEntry(camera) {
 function updateLedgerDisplay() {
   const count = state.ledger.length;
   document.getElementById('ledger-total-count').textContent = count;
-
   let grade = count > 8 ? 'F' : count > 3 ? 'C' : 'A+';
   let gradeClass = count > 8 ? 'grade-f' : count > 3 ? 'grade-c' : 'grade-a';
 
@@ -491,33 +479,15 @@ function updateLedgerDisplay() {
     if (state.ledger.length === 0) {
       listEl.innerHTML = '<li class="empty-state">No surveillance intercepts recorded today.</li>';
     } else {
-      listEl.innerHTML = state.ledger.map(item => `
-        <li class="ledger-item">
-          <div>
-            <strong>${item.hardware}</strong><br>
-            <small style="color:#94a3b8;">${item.lat}, ${item.lon}</small>
-          </div>
-          <span>${item.time}</span>
-        </li>
-      `).join('');
+      listEl.innerHTML = state.ledger.map(item => `<li class="ledger-item"><div><strong>${item.hardware}</strong><br><small style="color:#94a3b8;">${item.lat}, ${item.lon}</small></div><span>${item.time}</span></li>`).join('');
     }
   }
 }
 
-function saveStoredCameras() {
-  localStorage.setItem('ghostlane_nodes', JSON.stringify(state.cameras));
-}
-
+function saveStoredCameras() { localStorage.setItem('ghostlane_nodes', JSON.stringify(state.cameras)); }
 function loadStoredCameras() {
   const raw = localStorage.getItem('ghostlane_nodes');
-  if (raw) {
-    try {
-      state.cameras = JSON.parse(raw);
-      renderCameraNodes();
-    } catch (e) {
-      state.cameras = [];
-    }
-  }
+  if (raw) { try { state.cameras = JSON.parse(raw); renderCameraNodes(); } catch (e) { state.cameras = []; } }
 }
 
 function toggleLiveRadar() {
@@ -532,10 +502,7 @@ function toggleLiveRadar() {
     return;
   }
 
-  if (!('geolocation' in navigator)) {
-    alert('Geolocation permissions required for live radar.');
-    return;
-  }
+  if (!('geolocation' in navigator)) { alert('Geolocation permissions required for live radar.'); return; }
 
   btn.textContent = 'RADAR LIVE';
   btn.classList.add('btn-radar-active');
@@ -547,19 +514,15 @@ function toggleLiveRadar() {
       const currentHeading = heading !== null && !isNaN(heading) ? Math.round(heading) : 0;
 
       state.position = { lat: latitude, lon: longitude, heading: currentHeading, speed: speed || 0 };
-
       document.getElementById('stat-speed').innerHTML = `${speedMph} <small>MPH</small>`;
       document.getElementById('stat-heading').innerHTML = `${currentHeading}°`;
 
       if (!state.userMarker) {
-        state.userMarker = L.circleMarker([latitude, longitude], {
-          radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1
-        }).addTo(state.map);
+        state.userMarker = L.circleMarker([latitude, longitude], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
         state.map.setView([latitude, longitude], 15);
       } else {
         state.userMarker.setLatLng([latitude, longitude]);
       }
-
       evaluateDirectionalAlerts();
     },
     err => console.warn(`GPS Error: ${err.message}`),
@@ -570,7 +533,6 @@ function toggleLiveRadar() {
 // UI Event Binding
 document.addEventListener('DOMContentLoaded', () => {
   initMap();
-
   document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
   
   document.getElementById('btn-sync-mesh').addEventListener('click', () => {
@@ -642,14 +604,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const mode = document.getElementById('node-coords-mode').value;
 
     let targetLat, targetLon;
-    if (mode === 'current' && state.position) {
-      targetLat = state.position.lat;
-      targetLon = state.position.lon;
-    } else {
-      const center = state.map.getCenter();
-      targetLat = center.lat;
-      targetLon = center.lng;
-    }
+    if (mode === 'current' && state.position) { targetLat = state.position.lat; targetLon = state.position.lon; }
+    else { const center = state.map.getCenter(); targetLat = center.lat; targetLon = center.lng; }
 
     state.cameras.push({
       id: `custom-${Date.now()}`, lat: targetLat, lon: targetLon, heading, fov, range, hardware, source: 'Community Verified'

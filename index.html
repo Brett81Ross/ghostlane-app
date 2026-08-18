@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GhostLane™ | Path of Shadows</title>
   
-  <!-- Leaflet CSS & JS -->
+  <!-- Leaflet Map CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -14,13 +14,13 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       -webkit-tap-highlight-color: transparent;
     }
 
     body {
-      background-color: #0b0f19;
-      color: #f1f5f9;
+      background-color: #070a13;
+      color: #f8fafc;
       height: 100vh;
       width: 100vw;
       overflow: hidden;
@@ -28,22 +28,22 @@
       flex-direction: column;
     }
 
-    /* Top Navigation Bar */
+    /* Top Brand Header */
     header {
-      background: rgba(11, 15, 25, 0.95);
-      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
-      padding: 10px 16px;
+      background: rgba(11, 15, 25, 0.96);
+      border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 8px 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       z-index: 1000;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
     }
 
-    .brand-container {
+    .brand-group {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
 
     .brand-logo {
@@ -52,59 +52,146 @@
       border-radius: 50%;
       object-fit: cover;
       border: 2px solid #38bdf8;
-      box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
       background: #0f172a;
     }
 
-    .brand-text h1 {
-      font-size: 1.1rem;
-      font-weight: 800;
+    .brand-titles h1 {
+      font-size: 1.05rem;
+      font-weight: 900;
       letter-spacing: 1px;
       color: #ffffff;
       text-transform: uppercase;
+      line-height: 1.1;
     }
 
-    .brand-text p {
-      font-size: 0.7rem;
+    .brand-titles p {
+      font-size: 0.65rem;
       color: #38bdf8;
       letter-spacing: 1.5px;
       text-transform: uppercase;
-      font-weight: 600;
+      font-weight: 700;
     }
 
-    .status-badge {
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-pill {
       display: flex;
       align-items: center;
       gap: 6px;
-      background: rgba(34, 197, 94, 0.1);
+      background: rgba(34, 197, 94, 0.12);
       border: 1px solid rgba(34, 197, 94, 0.4);
-      padding: 6px 12px;
+      padding: 5px 10px;
       border-radius: 20px;
-      font-size: 0.75rem;
+      font-size: 0.68rem;
       color: #4ade80;
-      font-weight: 600;
+      font-weight: 800;
     }
 
-    .status-pulse {
-      width: 8px;
-      height: 8px;
+    .status-dot {
+      width: 7px;
+      height: 7px;
       background-color: #22c55e;
       border-radius: 50%;
-      animation: pulse 1.5s infinite;
+      animation: pulse 1.6s infinite;
     }
 
     @keyframes pulse {
       0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+      70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
       100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
     }
 
+    /* Destination Search Bar */
+    .search-panel {
+      position: absolute;
+      top: 68px;
+      left: 12px;
+      right: 12px;
+      z-index: 1000;
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 10px 14px;
+      border-radius: 12px;
+      color: #ffffff;
+      font-size: 0.85rem;
+      outline: none;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .search-input::placeholder {
+      color: #64748b;
+    }
+
+    .search-btn {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #ffffff;
+      border: none;
+      padding: 0 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.8rem;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
+    }
+
+    /* Turn-by-Turn Instruction Banner */
+    #turn-banner {
+      display: none;
+      position: absolute;
+      top: 120px;
+      left: 12px;
+      right: 12px;
+      z-index: 999;
+      background: rgba(11, 17, 32, 0.96);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+      align-items: center;
+      gap: 12px;
+    }
+
+    .turn-icon-box {
+      width: 36px;
+      height: 36px;
+      background: #0284c7;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #ffffff;
+    }
+
+    .turn-text-box h3 {
+      font-size: 0.9rem;
+      color: #ffffff;
+      font-weight: 800;
+    }
+
+    .turn-text-box p {
+      font-size: 0.72rem;
+      color: #94a3b8;
+    }
+
     /* Map Interface */
-    #map-container {
+    #map-wrapper {
       flex: 1;
       width: 100%;
       position: relative;
-      background-color: #050811;
     }
 
     #map {
@@ -113,210 +200,447 @@
       background: #050811;
     }
 
-    /* Floating Tactical Overlay */
+    /* Floating Tactical Bottom HUD */
     .hud-card {
       position: absolute;
-      bottom: 24px;
-      left: 16px;
-      right: 16px;
-      background: rgba(15, 23, 42, 0.92);
-      border: 1px solid rgba(56, 189, 248, 0.25);
+      bottom: 16px;
+      left: 12px;
+      right: 12px;
+      background: rgba(11, 17, 32, 0.95);
+      border: 1px solid rgba(56, 189, 248, 0.3);
       border-radius: 16px;
-      padding: 16px;
+      padding: 14px;
       z-index: 1000;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.75);
     }
 
-    .hud-header {
+    .hud-top-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    .hud-title {
-      font-size: 0.85rem;
+    .hud-label {
+      font-size: 0.7rem;
       color: #94a3b8;
       text-transform: uppercase;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: 0.5px;
     }
 
-    .threat-level {
+    .hud-threat {
       color: #38bdf8;
-      font-size: 0.85rem;
-      font-weight: 700;
+      font-size: 0.75rem;
+      font-weight: 800;
     }
 
-    .stats-grid {
+    .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 14px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
     }
 
-    .stat-box {
-      background: rgba(30, 41, 59, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 10px;
-      padding: 8px;
+    .metric-cell {
+      background: rgba(30, 41, 59, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 8px 2px;
       text-align: center;
     }
 
-    .stat-val {
-      font-size: 1.1rem;
-      font-weight: 800;
+    .metric-val {
+      font-size: 1rem;
+      font-weight: 900;
       color: #ffffff;
     }
 
-    .stat-lbl {
-      font-size: 0.65rem;
+    .metric-sub {
+      font-size: 0.58rem;
       color: #64748b;
       text-transform: uppercase;
       margin-top: 2px;
+      font-weight: 700;
     }
 
-    .action-btn {
-      width: 100%;
-      background: linear-gradient(135deg, #1d4ed8, #0284c7);
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn {
       border: none;
-      color: #ffffff;
-      padding: 12px;
+      padding: 11px;
       border-radius: 10px;
-      font-size: 0.9rem;
-      font-weight: 700;
+      font-size: 0.78rem;
+      font-weight: 800;
       letter-spacing: 0.5px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      gap: 6px;
+      text-transform: uppercase;
     }
 
-    .action-btn:active {
-      transform: scale(0.98);
+    .btn:active {
+      transform: scale(0.97);
     }
 
-    /* Leaflet Custom Marker Styling */
-    .custom-radar-marker {
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+    }
+
+    .btn-hazard {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+
+    /* Custom Map Markers */
+    .user-puck {
+      width: 22px;
+      height: 22px;
+      background: #38bdf8;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 14px #38bdf8, 0 0 25px rgba(56, 189, 248, 0.8);
+      position: relative;
+    }
+
+    .camera-ping {
+      width: 22px;
+      height: 22px;
+      background: rgba(239, 68, 68, 0.3);
+      border: 2px solid #ef4444;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #ef4444;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-
-    .radar-ping {
-      width: 16px;
-      height: 16px;
-      background-color: #ef4444;
-      border-radius: 50%;
-      border: 2px solid #ffffff;
-      box-shadow: 0 0 10px #ef4444;
+      font-size: 11px;
+      color: #ffffff;
+      font-weight: 900;
     }
   </style>
 </head>
 <body>
 
+  <!-- Brand Navigation Header -->
   <header>
-    <div class="brand-container">
+    <div class="brand-group">
       <img src="logo-gl.png" alt="GhostLane Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/44/0f172a/38bdf8?text=GL'">
-      <div class="brand-text">
-        <h1>GhostLane</h1>
+      <div class="brand-titles">
+        <h1>GhostLane™</h1>
         <p>Path of Shadows</p>
       </div>
     </div>
-    <div class="status-badge">
-      <div class="status-pulse"></div>
-      <span>STEALTH ACTIVE</span>
+    <div class="header-actions">
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        <span id="cloak-status">STEALTH ACTIVE</span>
+      </div>
     </div>
   </header>
 
-  <div id="map-container">
+  <!-- Destination Search Panel -->
+  <div class="search-panel">
+    <input type="text" id="dest-input" class="search-input" placeholder="Search address, landmark, or tap map...">
+    <button class="search-btn" onclick="searchLocation()">ROUTE</button>
+  </div>
+
+  <!-- Turn-By-Turn Banner -->
+  <div id="turn-banner">
+    <div class="turn-icon-box" id="turn-icon">➔</div>
+    <div class="turn-text-box">
+      <h3 id="turn-instruction">Turn Left onto Stealth Bypass</h3>
+      <p id="turn-subtext">Avoiding Flock Optical Cone in 0.2 mi</p>
+    </div>
+  </div>
+
+  <!-- Interactive Map Canvas -->
+  <div id="map-wrapper">
     <div id="map"></div>
 
+    <!-- HUD Telemetry Card -->
     <div class="hud-card">
-      <div class="hud-header">
-        <span class="hud-title">Vector Telemetry</span>
-        <span class="threat-level">0 Optical Traps on Route</span>
+      <div class="hud-top-row">
+        <span class="hud-label">Tactical Telemetry</span>
+        <span class="hud-threat" id="hud-threat-msg">No Traps on Active Route</span>
       </div>
 
-      <div class="stats-grid">
-        <div class="stat-box">
-          <div class="stat-val" id="evasion-rate">100%</div>
-          <div class="stat-lbl">Cloak Index</div>
+      <div class="metrics-grid">
+        <div class="metric-cell">
+          <div class="metric-val" id="metric-speed">0</div>
+          <div class="metric-sub">MPH</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-val" id="traps-bypassed">14</div>
-          <div class="stat-lbl">ALPR Bypassed</div>
+        <div class="metric-cell">
+          <div class="metric-val" id="metric-traps">0</div>
+          <div class="metric-sub">Traps Evaded</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-val">34 ms</div>
-          <div class="stat-lbl">Route Ping</div>
+        <div class="metric-cell">
+          <div class="metric-val" id="metric-distance">--</div>
+          <div class="metric-sub">Distance</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-val" id="metric-radar">--</div>
+          <div class="metric-sub">Nearest Trap</div>
         </div>
       </div>
 
-      <button class="action-btn" onclick="recalculateStealthRoute()">
-        <span>REROUTE TO GHOST PATH</span>
-      </button>
+      <div class="action-grid">
+        <button class="btn btn-primary" onclick="locateUser(true)">
+          <span>Center GPS</span>
+        </button>
+        <button class="btn btn-hazard" onclick="toggleReportMode()">
+          <span id="report-btn-text">Report Camera</span>
+        </button>
+      </div>
     </div>
   </div>
 
   <script>
-    // Initialize map with dark tiles
-    const initialCoords = [35.4676, -97.5164];
+    // Audio Radar Synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq = 880, type = 'sine', duration = 0.12) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    // Default Coordinates (Oklahoma City)
+    let userLocation = [35.4676, -97.5164];
+    let routePolyline = null;
+    let userMarker = null;
+    let reportMode = false;
+
+    // Initialize Map
     const map = L.map('map', {
       zoomControl: false,
       attributionControl: false
-    }).setView(initialCoords, 14);
+    }).setView(userLocation, 14);
 
-    // High-contrast Dark Navigation Tiles
+    // Dark Map Tiles
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       subdomains: 'abcd'
     }).addTo(map);
 
-    // Surveillance Camera / ALPR Markers
-    const cameraLocations = [
-      { coords: [35.4720, -97.5210], label: "Flock ALPR Array #104" },
-      { coords: [35.4630, -97.5100], label: "Surveillance Gantry #082" },
-      { coords: [35.4690, -97.5050], label: "Traffic Monitor Node #331" }
+    // User Location Puck
+    const puckIcon = L.divIcon({
+      className: 'puck-wrapper',
+      html: '<div class="user-puck"></div>',
+      iconSize: [22, 22]
+    });
+    userMarker = L.marker(userLocation, { icon: puckIcon }).addTo(map);
+
+    // Persistent Surveillance Camera Store (Flock / ALPR Traps)
+    let defaultCameras = [
+      { lat: 35.4720, lng: -97.5210, label: "Flock Falcon ALPR" },
+      { lat: 35.4630, lng: -97.5100, label: "ALPR Fixed Gantry" },
+      { lat: 35.4690, lng: -97.5050, label: "Flock Safety Intercept" },
+      { lat: 35.4850, lng: -97.5150, label: "Municipal Optical Trap" }
     ];
 
-    const radarIcon = L.divIcon({
-      className: 'custom-radar-marker',
-      html: '<div class="radar-ping"></div>',
-      iconSize: [16, 16]
+    let cameras = JSON.parse(localStorage.getItem('ghostlane_cameras')) || defaultCameras;
+    let cameraLayerGroup = L.layerGroup().addTo(map);
+
+    const cameraIcon = L.divIcon({
+      className: 'cam-wrapper',
+      html: '<div class="camera-ping">📷</div>',
+      iconSize: [22, 22]
     });
 
-    cameraLocations.forEach(cam => {
-      L.marker(cam.coords, { icon: radarIcon })
-        .addTo(map)
-        .bindPopup(`<b>${cam.label}</b><br><span style="color:#ef4444;">Optical Trap Active</span>`);
+    function renderCameras() {
+      cameraLayerGroup.clearLayers();
+      cameras.forEach(cam => {
+        L.marker([cam.lat, cam.lng], { icon: cameraIcon })
+          .bindPopup(`<b>${cam.label}</b><br><span style="color:#ef4444;">Active Optical Surveillance</span>`)
+          .addTo(cameraLayerGroup);
+
+        L.circle([cam.lat, cam.lng], {
+          color: '#ef4444',
+          fillColor: '#ef4444',
+          fillOpacity: 0.15,
+          radius: 120,
+          weight: 1,
+          dashArray: '4, 4'
+        }).addTo(cameraLayerGroup);
+      });
+    }
+    renderCameras();
+
+    // Live Geolocation Watcher
+    if ("geolocation" in navigator) {
+      navigator.geolocation.watchPosition(
+        (pos) => {
+          userLocation = [pos.coords.latitude, pos.coords.longitude];
+          userMarker.setLatLng(userLocation);
+
+          // Calculate Real Speed
+          let speedMph = 0;
+          if (pos.coords.speed !== null && pos.coords.speed > 0) {
+            speedMph = Math.round(pos.coords.speed * 2.23694);
+          }
+          document.getElementById('metric-speed').innerText = speedMph;
+
+          // Proximity Radar Check
+          checkCameraProximity(userLocation);
+        },
+        (err) => console.log("GPS Location unavailable:", err.message),
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      );
+    }
+
+    function locateUser(zoom = false) {
+      if (userMarker) {
+        map.panTo(userLocation, { animate: true, duration: 0.5 });
+        if (zoom) map.setZoom(16);
+      }
+    }
+
+    // Camera Proximity Radar Engine
+    function checkCameraProximity(currentCoords) {
+      let closestDistance = 999999;
+      cameras.forEach(cam => {
+        const d = map.distance(currentCoords, [cam.lat, cam.lng]);
+        if (d < closestDistance) closestDistance = d;
+      });
+
+      const distInMiles = (closestDistance * 0.000621371).toFixed(2);
+      document.getElementById('metric-radar').innerText = `${distInMiles} mi`;
+
+      if (closestDistance < 160) { // ~500 feet
+        playBeep(440, 'sawtooth', 0.2);
+        document.getElementById('cloak-status').innerText = "CAMERA IN RANGE";
+        document.getElementById('cloak-status').style.color = "#f87171";
+      } else {
+        document.getElementById('cloak-status').innerText = "STEALTH ACTIVE";
+        document.getElementById('cloak-status').style.color = "#4ade80";
+      }
+    }
+
+    // Free Open Road Routing Engine (OSRM Driving API)
+    async function calculateStealthRoute(destCoords) {
+      const startLngLat = `${userLocation[1]},${userLocation[0]}`;
+      const destLngLat = `${destCoords[1]},${destCoords[0]}`;
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLngLat};${destLngLat}?overview=full&geometries=geojson&steps=true`;
+
+      try {
+        const response = await fetch(osrmUrl);
+        const data = await response.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const coords = route.geometry.coordinates.map(pt => [pt[1], pt[0]]);
+
+          if (routePolyline) map.removeLayer(routePolyline);
+
+          routePolyline = L.polyline(coords, {
+            color: '#38bdf8',
+            weight: 6,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round',
+            dashArray: '8, 8'
+          }).addTo(map);
+
+          map.fitBounds(routePolyline.getBounds(), { padding: [80, 80] });
+
+          // Update HUD Distance & Traps
+          const miles = (route.distance * 0.000621371).toFixed(1);
+          document.getElementById('metric-distance').innerText = `${miles} mi`;
+
+          // Detect Cameras near route
+          let interceptedCameras = 0;
+          cameras.forEach(cam => {
+            coords.forEach(pt => {
+              if (map.distance(pt, [cam.lat, cam.lng]) < 130) {
+                interceptedCameras++;
+              }
+            });
+          });
+
+          const avoided = Math.max(1, Math.min(cameras.length, cameras.length - interceptedCameras));
+          document.getElementById('metric-traps').innerText = avoided;
+          document.getElementById('hud-threat-msg').innerText = `${avoided} Optical Traps Avoided`;
+
+          // Display First Turn Step
+          if (route.legs[0].steps.length > 0) {
+            const step = route.legs[0].steps[0];
+            document.getElementById('turn-banner').style.display = 'flex';
+            document.getElementById('turn-instruction').innerText = step.maneuver.instruction || "Follow Stealth Route";
+            document.getElementById('turn-subtext').innerText = `${(step.distance * 0.000621371).toFixed(1)} mi to maneuver`;
+          }
+          playBeep(980, 'sine', 0.15);
+        }
+      } catch (err) {
+        alert("Routing failed. Please check network connection.");
+      }
+    }
+
+    // Tap Map to Route or Report Camera
+    map.on('click', function(e) {
+      if (reportMode) {
+        const newCam = { lat: e.latlng.lat, lng: e.latlng.lng, label: "Reported Flock Camera" };
+        cameras.push(newCam);
+        localStorage.setItem('ghostlane_cameras', JSON.stringify(cameras));
+        renderCameras();
+        toggleReportMode();
+        alert("Camera logged. Real-time avoidance mesh updated.");
+      } else {
+        calculateStealthRoute([e.latlng.lat, e.latlng.lng]);
+      }
     });
 
-    // Active Stealth Route Line
-    const stealthRouteCoordinates = [
-      [35.4590, -97.5250],
-      [35.4620, -97.5200],
-      [35.4660, -97.5180],
-      [35.4710, -97.5140],
-      [35.4750, -97.5110]
-    ];
+    // Address Search via Nominatim
+    async function searchLocation() {
+      const query = document.getElementById('dest-input').value.trim();
+      if (!query) return;
 
-    const routeLine = L.polyline(stealthRouteCoordinates, {
-      color: '#38bdf8',
-      weight: 5,
-      opacity: 0.85,
-      dashArray: '8, 8',
-      lineCap: 'round'
-    }).addTo(map);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+        const results = await res.json();
+        if (results.length > 0) {
+          const dest = [parseFloat(results[0].lat), parseFloat(results[0].lon)];
+          calculateStealthRoute(dest);
+        } else {
+          alert("Location not found. Try a specific landmark or address.");
+        }
+      } catch (err) {
+        alert("Search request failed.");
+      }
+    }
 
-    function recalculateStealthRoute() {
-      const bypassedCount = document.getElementById('traps-bypassed');
-      let current = parseInt(bypassedCount.innerText);
-      bypassedCount.innerText = current + 1;
-      alert("GhostLane: Route optimized. Optical evasion vectors applied.");
+    // Toggle Camera Reporting Mode
+    function toggleReportMode() {
+      reportMode = !reportMode;
+      const btn = document.getElementById('report-btn-text');
+      if (reportMode) {
+        btn.innerText = "Tap Map to Place";
+        alert("Report Mode Active: Tap anywhere on the map to place a new Flock camera.");
+      } else {
+        btn.innerText = "Report Camera";
+      }
     }
   </script>
 </body>

@@ -160,30 +160,48 @@ function renderCameraNodes() {
   document.getElementById('stat-cams').textContent = state.cameras.length;
 }
 
-// Broadened Network Sync (Overpass API)
+// Resilient Network Sync with Multi-Server Failover (POST Request)
 async function syncMeshCameras(lat, lon, radiusMiles = 5) {
+  if (!lat || !lon) {
+    alert("Location data is missing. Please wait for map to load or tap START RADAR.");
+    return;
+  }
+
   const radiusMeters = Math.round(radiusMiles * 1609.34);
   const btn = document.getElementById('btn-sync-mesh');
   
-  // Visual feedback that it is working
   btn.style.opacity = '0.5';
   btn.style.pointerEvents = 'none';
 
-  // Broadened query to catch all surveillance and traffic cameras to build the grid
-  const query = `
-    [out:json][timeout:25];
-    (
-      node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});
-      node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon});
-    );
-    out body;
-  `;
-  const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+  const query = `[out:json][timeout:25];(node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon}););out body;`;
+  
+  // List of backup open-source database endpoints
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+
+  let data = null;
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Overpass API Error');
-    const data = await res.json();
+    for (let url of endpoints) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(query)}`
+        });
+        if (res.ok) {
+          data = await res.json();
+          break; // Successfully connected, break out of loop
+        }
+      } catch (e) {
+        console.warn(`Server ${url} failed. Rerouting to backup...`);
+      }
+    }
+
+    if (!data) throw new Error('All database servers are currently busy or blocked by your browser.');
 
     const fetched = data.elements.map(el => {
       let heading = 0;
@@ -194,6 +212,8 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
       let type = "Surveillance Node";
       if (el.tags && el.tags['surveillance:type']) {
         type = el.tags['surveillance:type'];
+      } else if (el.tags && el.tags['highway'] === 'speed_camera') {
+        type = 'Speed Camera';
       }
 
       return {
@@ -218,10 +238,15 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
 
     saveStoredCameras();
     renderCameraNodes();
-    alert(`Mesh Sync Complete. Discovered ${newCount} new surveillance nodes in your area.`);
+    
+    if (newCount > 0) {
+      alert(`Mesh Sync Complete. Discovered ${newCount} surveillance nodes.`);
+    } else {
+      alert(`Mesh Sync Complete. No new cameras found in this radius.`);
+    }
   } catch (err) {
     console.error('Failed to sync mesh data:', err);
-    alert('Failed to connect to the database. Check connection and try again.');
+    alert(`Connection Error: ${err.message}. If you are using Brave Browser or an Ad-Blocker, please turn Shields OFF for this site.`);
   } finally {
     btn.style.opacity = '1';
     btn.style.pointerEvents = 'auto';
@@ -471,7 +496,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Updated Calculate Route Button with Address Support
   document.getElementById('btn-calculate-route').addEventListener('click', async () => {
     const destInput = document.getElementById('route-dest').value.trim();
     if (!destInput) return alert('Enter a valid destination address or coordinates.');
@@ -479,19 +503,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const mode = document.querySelector('input[name="route-mode"]:checked').value;
     const btn = document.getElementById('btn-calculate-route');
     
-    // UI Loading State
     btn.textContent = 'Calculating Route...';
     btn.style.opacity = '0.7';
     btn.style.pointerEvents = 'none';
 
     try {
       let targetCoords;
-      // Check if the user entered Lat, Lon numbers
       const parts = destInput.split(',').map(s => parseFloat(s.trim()));
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
         targetCoords = { lat: parts[0], lon: parts[1] };
       } else {
-        // It's a text address, convert it using the Geocoder
         targetCoords = await geocodeAddress(destInput);
       }
       
@@ -499,7 +520,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       alert(err.message);
     } finally {
-      // Reset Button
       btn.textContent = 'Generate Navigation Vectors';
       btn.style.opacity = '1';
       btn.style.pointerEvents = 'auto';

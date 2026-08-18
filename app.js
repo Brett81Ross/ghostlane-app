@@ -95,6 +95,17 @@ function computeFovPolygonPoints(lat, lon, headingDeg, fovDeg, distanceFeet = 40
   return points;
 }
 
+// Address Geocoding Engine
+async function geocodeAddress(address) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  if (data && data.length > 0) {
+    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  }
+  throw new Error("Address not found. Try adding the city and state.");
+}
+
 // Map Initialization
 function initMap() {
   state.map = L.map('map', {
@@ -137,7 +148,7 @@ function renderCameraNodes() {
     const marker = L.marker([cam.lat, cam.lon], { icon }).addTo(state.cameraLayer);
     marker.bindPopup(`
       <div style="color: #0b0f19; font-size: 0.8rem;">
-        <strong>${cam.hardware || 'ALPR Camera'}</strong><br>
+        <strong>${cam.hardware || 'Camera Node'}</strong><br>
         Lens Heading: ${cam.heading}°<br>
         FOV: ${cam.fov || 60}°<br>
         Range: ${cam.range || 400} ft<br>
@@ -149,14 +160,21 @@ function renderCameraNodes() {
   document.getElementById('stat-cams').textContent = state.cameras.length;
 }
 
-// Network Sync (Overpass API)
+// Broadened Network Sync (Overpass API)
 async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   const radiusMeters = Math.round(radiusMiles * 1609.34);
+  const btn = document.getElementById('btn-sync-mesh');
+  
+  // Visual feedback that it is working
+  btn.style.opacity = '0.5';
+  btn.style.pointerEvents = 'none';
+
+  // Broadened query to catch all surveillance and traffic cameras to build the grid
   const query = `
     [out:json][timeout:25];
     (
-      node["man_made"="surveillance"]["surveillance:type"="ALPR"](around:${radiusMeters},${lat},${lon});
-      node["surveillance:type"="ALPR"](around:${radiusMeters},${lat},${lon});
+      node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});
+      node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon});
     );
     out body;
   `;
@@ -172,6 +190,12 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
       if (el.tags && (el.tags['camera:direction'] || el.tags['direction'])) {
         heading = parseFloat(el.tags['camera:direction'] || el.tags['direction']) || 0;
       }
+      
+      let type = "Surveillance Node";
+      if (el.tags && el.tags['surveillance:type']) {
+        type = el.tags['surveillance:type'];
+      }
+
       return {
         id: `osm-${el.id}`,
         lat: el.lat,
@@ -179,21 +203,28 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
         heading: heading,
         fov: 60,
         range: 400,
-        hardware: (el.tags && el.tags.operator) || 'Flock / ALPR Node',
+        hardware: type.toUpperCase(),
         source: 'OSM Verified'
       };
     });
 
+    let newCount = 0;
     fetched.forEach(item => {
       if (!state.cameras.some(c => c.id === item.id)) {
         state.cameras.push(item);
+        newCount++;
       }
     });
 
     saveStoredCameras();
     renderCameraNodes();
+    alert(`Mesh Sync Complete. Discovered ${newCount} new surveillance nodes in your area.`);
   } catch (err) {
     console.error('Failed to sync mesh data:', err);
+    alert('Failed to connect to the database. Check connection and try again.');
+  } finally {
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
   }
 }
 
@@ -252,51 +283,45 @@ function evaluateDirectionalAlerts() {
   }
 }
 
-// Shadow Routing
-async function calculateShadowRoute(destCoords, mode = 'ghost') {
+// Shadow Routing with Address Support
+async function calculateShadowRoute(targetCoords, mode = 'ghost') {
   if (!state.position) {
-    alert('Active GPS fix required for shadow route calculation.');
-    return;
+    throw new Error('Active GPS radar is required. Tap START RADAR first.');
   }
 
   const start = `${state.position.lon},${state.position.lat}`;
-  const end = `${destCoords.lon},${destCoords.lat}`;
+  const end = `${targetCoords.lon},${targetCoords.lat}`;
   const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;
 
-  try {
-    const res = await fetch(osrmUrl);
-    const data = await res.json();
-    if (!data.routes || data.routes.length === 0) throw new Error('No route discovered');
+  const res = await fetch(osrmUrl);
+  const data = await res.json();
+  if (!data.routes || data.routes.length === 0) throw new Error('No drivable route discovered to this location.');
 
-    const primaryRoute = data.routes[0];
-    const coordinates = primaryRoute.geometry.coordinates;
+  const primaryRoute = data.routes[0];
+  const coordinates = primaryRoute.geometry.coordinates;
 
-    let intercepts = 0;
-    coordinates.forEach(coord => {
-      const [rLon, rLat] = coord;
-      state.cameras.forEach(cam => {
-        if (getDistanceFeet(rLat, rLon, cam.lat, cam.lon) < 200) {
-          intercepts++;
-        }
-      });
+  let intercepts = 0;
+  coordinates.forEach(coord => {
+    const [rLon, rLat] = coord;
+    state.cameras.forEach(cam => {
+      if (getDistanceFeet(rLat, rLon, cam.lat, cam.lon) < 200) {
+        intercepts++;
+      }
     });
+  });
 
-    state.routeLayer.clearLayers();
-    const leafletCoords = coordinates.map(c => [c[1], c[0]]);
-    const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
+  state.routeLayer.clearLayers();
+  const leafletCoords = coordinates.map(c => [c[1], c[0]]);
+  const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
 
-    L.polyline(leafletCoords, { color: routeColor, weight: 6, opacity: 0.85 }).addTo(state.routeLayer);
-    state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [50, 50] });
+  L.polyline(leafletCoords, { color: routeColor, weight: 6, opacity: 0.85 }).addTo(state.routeLayer);
+  state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [50, 50] });
 
-    const totalMiles = (primaryRoute.distance * METERS_TO_MILES).toFixed(1);
-    document.getElementById('route-results').classList.remove('route-results-hidden');
-    document.getElementById('res-distance').textContent = `${totalMiles} mi`;
-    document.getElementById('res-duration').textContent = `${Math.round(primaryRoute.duration / 60)} min`;
-    document.getElementById('res-intercepts').textContent = intercepts;
-
-  } catch (err) {
-    alert(`Routing Engine Error: ${err.message}`);
-  }
+  const totalMiles = (primaryRoute.distance * METERS_TO_MILES).toFixed(1);
+  document.getElementById('route-results').classList.remove('route-results-hidden');
+  document.getElementById('res-distance').textContent = `${totalMiles} mi`;
+  document.getElementById('res-duration').textContent = `${Math.round(primaryRoute.duration / 60)} min`;
+  document.getElementById('res-intercepts').textContent = intercepts;
 }
 
 // Ledger & Storage
@@ -414,10 +439,12 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap();
 
   document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
+  
   document.getElementById('btn-sync-mesh').addEventListener('click', () => {
     const center = state.position ? state.position : state.map.getCenter();
     syncMeshCameras(center.lat, center.lon || center.lng, 5);
   });
+  
   document.getElementById('btn-recenter').addEventListener('click', () => {
     if (state.position) state.map.setView([state.position.lat, state.position.lon], 16);
   });
@@ -444,13 +471,39 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  document.getElementById('btn-calculate-route').addEventListener('click', () => {
+  // Updated Calculate Route Button with Address Support
+  document.getElementById('btn-calculate-route').addEventListener('click', async () => {
     const destInput = document.getElementById('route-dest').value.trim();
-    if (!destInput) return alert('Enter a valid destination.');
-    const parts = destInput.split(',').map(s => parseFloat(s.trim()));
-    if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) return alert('Format must be: Latitude, Longitude');
+    if (!destInput) return alert('Enter a valid destination address or coordinates.');
+
     const mode = document.querySelector('input[name="route-mode"]:checked').value;
-    calculateShadowRoute({ lat: parts[0], lon: parts[1] }, mode);
+    const btn = document.getElementById('btn-calculate-route');
+    
+    // UI Loading State
+    btn.textContent = 'Calculating Route...';
+    btn.style.opacity = '0.7';
+    btn.style.pointerEvents = 'none';
+
+    try {
+      let targetCoords;
+      // Check if the user entered Lat, Lon numbers
+      const parts = destInput.split(',').map(s => parseFloat(s.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        targetCoords = { lat: parts[0], lon: parts[1] };
+      } else {
+        // It's a text address, convert it using the Geocoder
+        targetCoords = await geocodeAddress(destInput);
+      }
+      
+      await calculateShadowRoute(targetCoords, mode);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      // Reset Button
+      btn.textContent = 'Generate Navigation Vectors';
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    }
   });
 
   document.getElementById('btn-submit-node').addEventListener('click', () => {

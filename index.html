@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>GhostLane™ | Path of Shadows</title>
   
-  <!-- Leaflet CSS & JS -->
+  <!-- Leaflet Map CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -19,36 +19,38 @@
       user-select: none;
     }
 
-    body {
-      background-color: #060911;
-      color: #f8fafc;
-      height: 100vh;
+    html, body {
+      height: 100%;
+      height: 100dvh;
       width: 100vw;
       overflow: hidden;
+      background-color: #060911;
+      color: #f8fafc;
       display: flex;
       flex-direction: column;
     }
 
-    /* Header */
+    /* Top Brand Navigation Header */
     header {
       background: #0b1120;
       border-bottom: 1px solid rgba(56, 189, 248, 0.2);
-      padding: 10px 16px;
+      padding: max(8px, env(safe-area-inset-top)) 12px 8px 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       z-index: 1000;
+      flex-shrink: 0;
     }
 
     .brand-group {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
 
     .brand-logo {
-      width: 44px;
-      height: 44px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       object-fit: cover;
       border: 2px solid #38bdf8;
@@ -57,7 +59,7 @@
     }
 
     .brand-titles h1 {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 900;
       letter-spacing: 0.8px;
       color: #ffffff;
@@ -66,9 +68,9 @@
     }
 
     .brand-titles p {
-      font-size: 0.68rem;
+      font-size: 0.62rem;
       color: #38bdf8;
-      letter-spacing: 1.5px;
+      letter-spacing: 1.2px;
       text-transform: uppercase;
       font-weight: 700;
     }
@@ -79,43 +81,60 @@
       gap: 6px;
       background: rgba(34, 197, 94, 0.15);
       border: 1px solid rgba(34, 197, 94, 0.4);
-      padding: 6px 12px;
+      padding: 5px 10px;
       border-radius: 20px;
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       color: #4ade80;
       font-weight: 800;
       letter-spacing: 0.5px;
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       background-color: #22c55e;
       border-radius: 50%;
       box-shadow: 0 0 8px #22c55e;
     }
 
-    /* Search Bar Overlay */
+    /* Map Interface */
+    #map-wrapper {
+      flex: 1;
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      background: #060911;
+    }
+
+    /* Destination Search Bar Overlay */
     .search-container {
       position: absolute;
-      top: 66px;
-      left: 12px;
-      right: 12px;
+      top: 10px;
+      left: 10px;
+      right: 10px;
       z-index: 1000;
       display: flex;
-      gap: 8px;
+      gap: 6px;
+      pointer-events: auto;
     }
 
     .search-input {
       flex: 1;
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid rgba(56, 189, 248, 0.35);
-      padding: 12px 14px;
+      padding: 10px 12px;
       border-radius: 10px;
       color: #ffffff;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       outline: none;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+      -webkit-user-select: text;
+      user-select: text;
     }
 
     .search-input::placeholder {
@@ -126,60 +145,55 @@
       background: #0284c7;
       color: #ffffff;
       border: none;
-      padding: 0 18px;
+      padding: 0 16px;
       border-radius: 10px;
       font-weight: 800;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    /* Map */
-    #map-wrapper {
-      flex: 1;
-      width: 100%;
-      position: relative;
+    .search-btn:active {
+      transform: scale(0.96);
     }
 
-    #map {
-      height: 100%;
-      width: 100%;
-      background: #060911;
-    }
-
-    /* Tactical Telemetry Bottom Card */
+    /* Tactical Telemetry Floating Bottom HUD */
     .hud-card {
       position: absolute;
-      bottom: 16px;
-      left: 12px;
-      right: 12px;
+      bottom: max(10px, env(safe-area-inset-bottom, 10px));
+      left: 10px;
+      right: 10px;
       background: rgba(11, 17, 32, 0.96);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 16px;
-      padding: 14px;
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      border-radius: 14px;
+      padding: 10px 12px;
       z-index: 1000;
       backdrop-filter: blur(12px);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.85);
+      pointer-events: auto;
     }
 
     .hud-top-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
 
     .hud-label {
-      font-size: 0.75rem;
+      font-size: 0.68rem;
       color: #94a3b8;
       text-transform: uppercase;
       font-weight: 800;
-      letter-spacing: 0.8px;
+      letter-spacing: 0.6px;
     }
 
     .hud-threat {
       color: #38bdf8;
-      font-size: 0.75rem;
+      font-size: 0.68rem;
       font-weight: 800;
     }
 
@@ -187,25 +201,26 @@
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 6px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
 
     .metric-cell {
-      background: rgba(30, 41, 59, 0.5);
+      background: rgba(30, 41, 59, 0.55);
       border: 1px solid rgba(255, 255, 255, 0.05);
       border-radius: 8px;
-      padding: 8px 2px;
+      padding: 6px 2px;
       text-align: center;
     }
 
     .metric-val {
-      font-size: 1.1rem;
+      font-size: 0.95rem;
       font-weight: 900;
       color: #ffffff;
+      line-height: 1.1;
     }
 
     .metric-sub {
-      font-size: 0.6rem;
+      font-size: 0.54rem;
       color: #64748b;
       text-transform: uppercase;
       margin-top: 2px;
@@ -220,9 +235,9 @@
 
     .btn {
       border: none;
-      padding: 12px;
-      border-radius: 10px;
-      font-size: 0.8rem;
+      padding: 10px 8px;
+      border-radius: 8px;
+      font-size: 0.75rem;
       font-weight: 800;
       letter-spacing: 0.5px;
       cursor: pointer;
@@ -230,32 +245,34 @@
       align-items: center;
       justify-content: center;
       text-transform: uppercase;
+      touch-action: manipulation;
+      min-height: 38px;
     }
 
     .btn:active {
-      transform: scale(0.98);
+      transform: scale(0.96);
     }
 
     .btn-primary {
       background: #0284c7;
       color: #ffffff;
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+      box-shadow: 0 3px 10px rgba(2, 132, 199, 0.35);
     }
 
     .btn-hazard {
-      background: rgba(239, 68, 68, 0.15);
+      background: rgba(239, 68, 68, 0.18);
       color: #f87171;
-      border: 1px solid rgba(239, 68, 68, 0.4);
+      border: 1px solid rgba(239, 68, 68, 0.45);
     }
 
-    /* Custom Camera Marker */
+    /* Custom Camera Ping Marker */
     .camera-ping-node {
       width: 24px;
       height: 24px;
       background: rgba(239, 68, 68, 0.25);
       border: 2px solid #ef4444;
       border-radius: 50%;
-      box-shadow: 0 0 12px #ef4444;
+      box-shadow: 0 0 10px #ef4444;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -278,7 +295,7 @@
   <!-- Brand Header -->
   <header>
     <div class="brand-group">
-      <img src="logo-gl.png" alt="GhostLane Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/44/0b1120/38bdf8?text=GL'">
+      <img src="logo-gl.png" alt="GhostLane Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/40/0b1120/38bdf8?text=GL'">
       <div class="brand-titles">
         <h1>GHOSTLANE™</h1>
         <p>PATH OF SHADOWS</p>
@@ -290,18 +307,18 @@
     </div>
   </header>
 
-  <!-- Search Bar -->
-  <div class="search-container">
-    <input type="text" id="dest-input" class="search-input" placeholder="Search address, landmark, or tap map...">
-    <button class="search-btn" onclick="searchDestination()">ROUTE</button>
-  </div>
-
-  <!-- Map Canvas -->
+  <!-- Interactive Map Canvas -->
   <div id="map-wrapper">
     <div id="map"></div>
 
-    <!-- Telemetry HUD -->
-    <div class="hud-card">
+    <!-- Search Overlay -->
+    <div class="search-container" id="search-box">
+      <input type="text" id="dest-input" class="search-input" placeholder="Search address, landmark, or tap map...">
+      <button class="search-btn" id="route-btn" onclick="searchDestination()">ROUTE</button>
+    </div>
+
+    <!-- Telemetry Bottom Card -->
+    <div class="hud-card" id="hud-box">
       <div class="hud-top-row">
         <span class="hud-label">TACTICAL TELEMETRY</span>
         <span class="hud-threat" id="threat-msg">No Traps on Active Route</span>
@@ -327,10 +344,10 @@
       </div>
 
       <div class="action-grid">
-        <button class="btn btn-primary" onclick="centerGPS()">
+        <button class="btn btn-primary" id="btn-gps" onclick="centerGPS()">
           <span>CENTER GPS</span>
         </button>
-        <button class="btn btn-hazard" onclick="toggleReportMode()">
+        <button class="btn btn-hazard" id="btn-report" onclick="toggleReportMode()">
           <span id="report-btn-label">REPORT CAMERA</span>
         </button>
       </div>
@@ -344,17 +361,29 @@
     let userMarker = null;
     let isReporting = false;
 
-    // Map Setup
+    // Initialize Map
     const map = L.map('map', {
       zoomControl: false,
       attributionControl: false
     }).setView(currentCoords, 14);
 
-    // High Contrast Dark Tiles
+    // High Contrast Dark CartoDB Tiles
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       subdomains: 'abcd'
     }).addTo(map);
+
+    // Fix Mobile Touch Event Pass-Through
+    const hudElement = document.getElementById('hud-box');
+    const searchElement = document.getElementById('search-box');
+    if (hudElement) {
+      L.DomEvent.disableClickPropagation(hudElement);
+      L.DomEvent.disableScrollPropagation(hudElement);
+    }
+    if (searchElement) {
+      L.DomEvent.disableClickPropagation(searchElement);
+      L.DomEvent.disableScrollPropagation(searchElement);
+    }
 
     // User GPS Puck
     const puckIcon = L.divIcon({
@@ -364,8 +393,8 @@
     });
     userMarker = L.marker(currentCoords, { icon: puckIcon }).addTo(map);
 
-    // Flock Safety / ALPR Optical Trap Cameras
-    let defaultCameras = [
+    // Optical Trap Surveillance Network (Flock Safety / ALPR Nodes)
+    const defaultCameras = [
       { lat: 35.4720, lng: -97.5210, name: "Flock Falcon ALPR" },
       { lat: 35.4630, lng: -97.5100, name: "ALPR Fixed Gantry" },
       { lat: 35.4690, lng: -97.5050, name: "Flock Safety Node" },
@@ -385,7 +414,7 @@
       cameraGroup.clearLayers();
       cameras.forEach(cam => {
         L.marker([cam.lat, cam.lng], { icon: cameraIcon })
-          .bindPopup(`<b>${cam.name}</b><br><span style="color:#ef4444;">Active Optical Surveillance</span>`)
+          .bindPopup(`<b>${cam.name}</b><br><span style="color:#ef4444;font-weight:bold;">Active Optical Surveillance</span>`)
           .addTo(cameraGroup);
 
         L.circle([cam.lat, cam.lng], {
@@ -401,7 +430,7 @@
     }
     drawCameras();
 
-    // Geolocation Tracking
+    // Live Geolocation Tracking
     if ("geolocation" in navigator) {
       navigator.geolocation.watchPosition(
         (pos) => {
@@ -415,7 +444,7 @@
           document.getElementById('metric-speed').innerText = speed;
           calculateNearestTrap(currentCoords);
         },
-        (err) => console.log("GPS Location unavailable:", err.message),
+        (err) => console.log("GPS unavailable:", err.message),
         { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
       );
     }
@@ -440,7 +469,7 @@
       }
     }
 
-    // Routing Engine (OSRM)
+    // Free Open Road Routing Engine (OSRM)
     async function routeToDestination(destCoords) {
       const start = `${currentCoords[1]},${currentCoords[0]}`;
       const end = `${destCoords[1]},${destCoords[0]}`;
@@ -465,26 +494,26 @@
             dashArray: '8, 8'
           }).addTo(map);
 
-          map.fitBounds(routeLine.getBounds(), { padding: [70, 70] });
+          map.fitBounds(routeLine.getBounds(), { padding: [60, 60] });
 
           const miles = (route.distance * 0.000621371).toFixed(1);
           document.getElementById('metric-distance').innerText = `${miles} mi`;
 
-          let trapsAvoided = 0;
+          let trapsNearRoute = 0;
           cameras.forEach(cam => {
             coords.forEach(pt => {
               if (map.distance(pt, [cam.lat, cam.lng]) < 150) {
-                trapsAvoided++;
+                trapsNearRoute++;
               }
             });
           });
 
-          const avoided = Math.max(1, Math.min(cameras.length, cameras.length - trapsAvoided));
+          const avoided = Math.max(1, Math.min(cameras.length, cameras.length - trapsNearRoute));
           document.getElementById('metric-traps').innerText = avoided;
           document.getElementById('threat-msg').innerText = `${avoided} Optical Traps Avoided`;
         }
       } catch (err) {
-        alert("Routing failed. Please check network connection.");
+        alert("Routing failed. Check internet connection.");
       }
     }
 
@@ -501,7 +530,7 @@
       }
     });
 
-    // Address Search via Nominatim
+    // Address Search via OpenStreetMap
     async function searchDestination() {
       const query = document.getElementById('dest-input').value.trim();
       if (!query) return;
@@ -519,13 +548,13 @@
       }
     }
 
-    // Report Mode
+    // Toggle Camera Reporting Mode
     function toggleReportMode() {
       isReporting = !isReporting;
       const label = document.getElementById('report-btn-label');
       if (isReporting) {
         label.innerText = "TAP MAP TO PLACE";
-        alert("Report Mode Active: Tap on the map where the camera is located.");
+        alert("Report Mode Active: Tap anywhere on the map to mark a camera.");
       } else {
         label.innerText = "REPORT CAMERA";
       }

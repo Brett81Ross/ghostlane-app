@@ -29,6 +29,28 @@ body, html {
   color: var(--text-main);
 }
 
+/* Map Wrapper for Smooth Viewport Rotation */
+#map-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 1;
+}
+
+#map {
+  width: 160vw;
+  height: 160vh;
+  position: absolute;
+  top: -30vh;
+  left: -30vw;
+  z-index: 1;
+  transform-origin: center center;
+  transition: transform 0.15s linear;
+}
+
 /* Telemetry Top HUD */
 #top-hud {
   position: absolute;
@@ -176,13 +198,6 @@ body, html {
   padding: 6px 10px;
   border-radius: 8px;
   color: #ffffff;
-}
-
-/* Map Canvas */
-#map {
-  width: 100%;
-  height: 100%;
-  z-index: 1;
 }
 
 /* Quick Controls / Action Buttons */

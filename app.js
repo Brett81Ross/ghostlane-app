@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: EXCLUSION ROUTING & AUDIO TURN-BY-TURN
+// GHOSTLANE CORE ENGINE: INTERPOLATED SIMULATOR & AUDIO FIX
 // ==========================================================
 
 const state = {
@@ -22,8 +22,7 @@ const state = {
   activeMode: 'ghost',
   lastRecalcTime: 0,
   simInterval: null,
-  turnWaypoints: [],
-  nextTurnIndex: 0
+  turnWaypoints: []
 };
 
 const METERS_TO_FEET = 3.28084;
@@ -59,9 +58,10 @@ function playRadarSweepBeep() {
 
 function speakVoiceAlert(phrase) {
   if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
+    // Only cancel if it's currently speaking to avoid cutting off fast instructions
+    if (window.speechSynthesis.speaking) window.speechSynthesis.cancel();
     const voiceMsg = new SpeechSynthesisUtterance(phrase);
-    voiceMsg.rate = 1.05;
+    voiceMsg.rate = 1.1;
     voiceMsg.pitch = 1.0;
     window.speechSynthesis.speak(voiceMsg);
   }
@@ -199,35 +199,40 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   finally { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
 }
 
-// Geometric Turn-by-Turn Engine
+// Geometric Turn Predictor
 function buildTurnInstructions(coords) {
   state.turnWaypoints = [];
-  state.nextTurnIndex = 0;
-  const minDistanceBetweenTurnsFeet = 300; 
+  const minDistanceBetweenTurnsFeet = 200; 
 
-  for (let i = 2; i < coords.length - 2; i += 2) {
-    let p1 = coords[i-2];
+  for (let i = 1; i < coords.length - 1; i++) {
+    let p1 = coords[i-1];
     let p2 = coords[i];
-    let p3 = coords[i+2];
+    let p3 = coords[i+1];
 
     let b1 = getAzimuth(p1[0], p1[1], p2[0], p2[1]);
     let b2 = getAzimuth(p2[0], p2[1], p3[0], p3[1]);
 
     let diff = ((b2 - b1 + 540) % 360) - 180;
 
-    if (Math.abs(diff) > 40) { 
+    // If the vector shifts more than 35 degrees, it's a turn
+    if (Math.abs(diff) > 35) { 
       let turnType = diff > 0 ? "right" : "left";
       
       let tooClose = false;
       if (state.turnWaypoints.length > 0) {
          let lastTurn = state.turnWaypoints[state.turnWaypoints.length - 1];
-         if (getDistanceFeet(lastTurn.lat, lastTurn.lon, p2[0], p2[1]) < minDistanceBetweenTurnsFeet) {
-             tooClose = true;
-         }
+         if (getDistanceFeet(lastTurn.lat, lastTurn.lon, p2[0], p2[1]) < minDistanceBetweenTurnsFeet) tooClose = true;
       }
 
       if (!tooClose) {
-          state.turnWaypoints.push({ lat: p2[0], lon: p2[1], type: turnType, announced1000: false, announced250: false });
+          state.turnWaypoints.push({ 
+            lat: p2[0], 
+            lon: p2[1], 
+            type: turnType, 
+            announced1000: false, 
+            announced250: false,
+            passed: false 
+          });
       }
     }
   }
@@ -276,7 +281,7 @@ function evaluateActiveTracking(isSimulation = false) {
 
       if (now - state.lastWarningTime > 7000 || state.activeThreat !== closestIntercept.id) {
         playRadarSweepBeep();
-        speakVoiceAlert(`Warning. ${closestIntercept.hardware} ahead in ${closestIntercept.distance} feet.`);
+        speakVoiceAlert(`Warning. ${closestIntercept.hardware} ahead.`);
         logLedgerEntry(closestIntercept);
         state.lastWarningTime = now;
         state.activeThreat = closestIntercept.id;
@@ -290,21 +295,24 @@ function evaluateActiveTracking(isSimulation = false) {
   // 2. Waze-Style Active Navigation & Audio Turn-by-Turn
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination) {
     
-    state.map.setView([lat, lon], 17);
+    // HARD CAMERA LOCK: animate=false prevents glitching during fast updates
+    state.map.setView([lat, lon], 17, { animate: false });
 
     // Turn-by-Turn Audio Announcements
-    if (state.turnWaypoints && state.nextTurnIndex < state.turnWaypoints.length) {
-       let nextTurn = state.turnWaypoints[state.nextTurnIndex];
-       let distToTurn = getDistanceFeet(lat, lon, nextTurn.lat, nextTurn.lon);
+    if (state.turnWaypoints) {
+       for (let turn of state.turnWaypoints) {
+           if (turn.passed) continue;
+           let distToTurn = getDistanceFeet(lat, lon, turn.lat, turn.lon);
 
-       if (distToTurn < 120) {
-           state.nextTurnIndex++; // Cleared the turn
-       } else if (distToTurn < 350 && !nextTurn.announced250) {
-           speakVoiceAlert(`Turn ${nextTurn.type} ahead.`);
-           nextTurn.announced250 = true;
-       } else if (distToTurn < 1100 && distToTurn > 800 && !nextTurn.announced1000) {
-           speakVoiceAlert(`In 1000 feet, turn ${nextTurn.type}.`);
-           nextTurn.announced1000 = true;
+           if (distToTurn < 100) {
+               turn.passed = true;
+           } else if (distToTurn < 300 && !turn.announced250) {
+               speakVoiceAlert(`Turn ${turn.type} ahead.`);
+               turn.announced250 = true;
+           } else if (distToTurn < 1000 && distToTurn > 600 && !turn.announced1000) {
+               speakVoiceAlert(`In 1000 feet, turn ${turn.type}.`);
+               turn.announced1000 = true;
+           }
        }
     }
 
@@ -338,7 +346,7 @@ function evaluateActiveTracking(isSimulation = false) {
   }
 }
 
-// LIVE SIMULATOR ENGINE
+// LIVE SIMULATOR ENGINE (Interpolated Anti-Glitch Fix)
 function runLiveSimulation() {
   if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) return alert("You must generate a Shadow Route first before running the simulator.");
   initAudioEngine();
@@ -351,34 +359,66 @@ function runLiveSimulation() {
   }
 
   if (state.simInterval) clearInterval(state.simInterval);
-  speakVoiceAlert("Navigation simulation initiated. Engaging fast-forward.");
+  speakVoiceAlert("Navigation simulation initiated.");
   
   document.getElementById('panel-routing').classList.add('panel-hidden');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('[data-tab="radar-view"]').classList.add('active');
 
-  let currentIndex = 0;
   let coords = state.activeRouteCoords;
+  let currentSegIdx = 0;
+  let distTraveledOnSeg = 0;
+  
+  // Math for 45 MPH smooth movement (updates every 100ms)
+  let speedFps = 66; 
+  let tickRateMs = 100;
+  let distPerTick = speedFps * (tickRateMs / 1000); 
 
   state.simInterval = setInterval(() => {
-    if (currentIndex >= coords.length) { clearInterval(state.simInterval); return; }
-    let currentPt = coords[currentIndex];
-    
-    state.position = { lat: currentPt[0], lon: currentPt[1], heading: 0, speed: 20 };
-
-    if (currentIndex < coords.length - 1) {
-      state.position.heading = getAzimuth(currentPt[0], currentPt[1], coords[currentIndex+1][0], coords[currentIndex+1][1]);
+    if (currentSegIdx >= coords.length - 1) { 
+        clearInterval(state.simInterval); 
+        return; 
     }
 
-    document.getElementById('stat-speed').innerHTML = `45 <small>MPH</small>`;
-    document.getElementById('stat-heading').innerHTML = `${Math.round(state.position.heading)}°`;
+    let p1 = coords[currentSegIdx];
+    let p2 = coords[currentSegIdx + 1];
+    let segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
 
-    if (!state.userMarker) state.userMarker = L.circleMarker([state.position.lat, state.position.lon], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
-    else state.userMarker.setLatLng([state.position.lat, state.position.lon]);
+    distTraveledOnSeg += distPerTick;
+
+    // Move to next line segment if we passed it
+    while (distTraveledOnSeg >= segDist) {
+      distTraveledOnSeg -= segDist;
+      currentSegIdx++;
+      if (currentSegIdx >= coords.length - 1) {
+         clearInterval(state.simInterval);
+         return;
+      }
+      p1 = coords[currentSegIdx];
+      p2 = coords[currentSegIdx + 1];
+      segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
+    }
+
+    // Linear Interpolation for exact coordinate
+    let ratio = segDist === 0 ? 0 : distTraveledOnSeg / segDist;
+    let currentLat = p1[0] + (p2[0] - p1[0]) * ratio;
+    let currentLon = p1[1] + (p2[1] - p1[1]) * ratio;
+    let currentHeading = getAzimuth(p1[0], p1[1], p2[0], p2[1]);
+
+    state.position = { lat: currentLat, lon: currentLon, heading: currentHeading, speed: 20 };
+
+    document.getElementById('stat-speed').innerHTML = `45 <small>MPH</small>`;
+    document.getElementById('stat-heading').innerHTML = `${Math.round(currentHeading)}°`;
+
+    if (!state.userMarker) {
+        state.userMarker = L.circleMarker([currentLat, currentLon], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
+    } else {
+        state.userMarker.setLatLng([currentLat, currentLon]);
+    }
 
     evaluateActiveTracking(true);
-    currentIndex += 3;
-  }, 350); 
+
+  }, tickRateMs); 
 }
 
 // EXCLUSION-ZONE ROUTING ENGINE
@@ -541,7 +581,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) { alert(err.message); }
   });
 
-  // Simulator Launch Button
   document.getElementById('btn-simulate-route').addEventListener('click', runLiveSimulation);
 
   document.getElementById('btn-submit-node').addEventListener('click', () => {

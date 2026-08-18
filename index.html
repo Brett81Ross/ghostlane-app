@@ -115,22 +115,22 @@
       color: #4ade80;
     }
 
-    /* Turn-by-Turn Navigation HUD */
+    /* Turn-by-Turn Navigation HUD (Updated to Tactical Blue/Slate) */
     #turn-hud {
       display: none;
       position: absolute;
       top: 130px;
       left: 12px;
       right: 12px;
-      background: rgba(239, 68, 68, 0.95);
-      border: 1px solid #fca5a5;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(56, 189, 248, 0.4);
       border-radius: 12px;
       padding: 14px 18px;
       z-index: 1060;
-      color: white;
+      color: #ffffff;
       align-items: center;
       gap: 16px;
-      box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+      box-shadow: 0 8px 25px rgba(2, 132, 199, 0.4);
       backdrop-filter: blur(10px);
     }
 
@@ -138,6 +138,7 @@
       font-size: 2.2rem;
       font-weight: 900;
       line-height: 1;
+      color: #38bdf8;
     }
 
     .turn-text h4 {
@@ -151,7 +152,7 @@
       font-size: 0.8rem;
       margin: 4px 0 0 0;
       font-weight: 600;
-      opacity: 0.9;
+      color: #94a3b8;
     }
 
     /* Map Interface */
@@ -279,24 +280,10 @@
       color: #ef4444;
     }
 
-    /* Custom Map Markers */
-    .camera-glow-marker {
-      width: 24px;
-      height: 24px;
-      background: rgba(239, 68, 68, 0.2);
-      border: 2px solid #ef4444;
-      border-radius: 50%;
-      box-shadow: 0 0 12px rgba(239, 68, 68, 0.8), inset 0 0 6px #ef4444;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .camera-glow-core {
-      width: 6px;
-      height: 6px;
-      background: #ffffff;
-      border-radius: 50%;
+    /* Directional Camera Cones & Markers */
+    .custom-cone-icon {
+      background: transparent;
+      border: none;
     }
 
     .user-arrow-puck {
@@ -378,9 +365,9 @@
     }
 
     .btn-route {
-      background: #ef4444;
-      color: #ffffff;
-      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+      background: #38bdf8;
+      color: #030712;
+      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.4);
     }
 
     .btn-route:active {
@@ -501,7 +488,7 @@
       }
     }
 
-    // Text-to-Speech Engine for Turn-by-Turn Navigation
+    // Text-to-Speech Engine
     const synth = window.speechSynthesis;
     function speakAlert(text) {
       if (synth.speaking) synth.cancel();
@@ -547,37 +534,71 @@
     });
     userMarker = L.marker(userCoords, { icon: puckIcon, zIndexOffset: 1000 }).addTo(map);
 
-    // Generate 134 Realistic Camera Clusters (Hardcoded Simulation)
-    const cameraLocations = [];
-    const basePoints = [
-      { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
-      { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
-      { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, 
-      { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  
-    ];
+    // Camera Generation Logic with Directional Headings
+    let cameraLocations = JSON.parse(localStorage.getItem('ghostlane_nodes_v2')) || [];
+    
+    if (cameraLocations.length === 0) {
+      const basePoints = [
+        { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
+        { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
+        { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, 
+        { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  
+      ];
 
-    basePoints.forEach(bp => {
-      for (let i = 0; i < bp.count; i++) {
-        const offsetLat = (Math.random() - 0.5) * bp.spread * 2;
-        const offsetLng = (Math.random() - 0.5) * bp.spread * 2;
-        cameraLocations.push({
-          lat: bp.lat + offsetLat,
-          lng: bp.lng + offsetLng,
-          id: `ALPR-${Math.floor(1000 + Math.random() * 9000)}`
-        });
-      }
-    });
+      const headings = [
+        { h: 0, l: 'Northbound' }, { h: 45, l: 'Northeast' }, { h: 90, l: 'Eastbound' }, 
+        { h: 135, l: 'Southeast' }, { h: 180, l: 'Southbound' }, { h: 225, l: 'Southwest' }, 
+        { h: 270, l: 'Westbound' }, { h: 315, l: 'Northwest' }
+      ];
 
-    const cameraIcon = L.divIcon({
-      className: 'cam-marker-wrapper',
-      html: '<div class="camera-glow-marker"><div class="camera-glow-core"></div></div>',
-      iconSize: [24, 24]
-    });
+      basePoints.forEach(bp => {
+        for (let i = 0; i < bp.count; i++) {
+          const offsetLat = (Math.random() - 0.5) * bp.spread * 2;
+          const offsetLng = (Math.random() - 0.5) * bp.spread * 2;
+          const dir = headings[Math.floor(Math.random() * headings.length)];
+          
+          cameraLocations.push({
+            lat: bp.lat + offsetLat,
+            lng: bp.lng + offsetLng,
+            id: `ALPR-${Math.floor(1000 + Math.random() * 9000)}`,
+            heading: dir.h,
+            label: dir.l
+          });
+        }
+      });
+      localStorage.setItem('ghostlane_nodes_v2', JSON.stringify(cameraLocations));
+    }
+
+    // Directional SVG Cone Generator (60 Degree FOV)
+    const getConeHtml = (heading) => `
+      <div style="width: 60px; height: 60px; transform: rotate(${heading}deg); transform-origin: center;">
+        <svg width="60" height="60" viewBox="0 0 60 60">
+          <path d="M 30 30 L 17.5 8.35 A 25 25 0 0 1 42.5 8.35 Z" fill="rgba(239, 68, 68, 0.25)" stroke="#ef4444" stroke-width="1.5" />
+          <circle cx="30" cy="30" r="4" fill="#ffffff" stroke="#ef4444" stroke-width="2" style="filter: drop-shadow(0 0 6px #ef4444)" />
+        </svg>
+      </div>
+    `;
 
     const cameraLayerGroup = L.layerGroup().addTo(map);
-    cameraLocations.forEach(cam => {
-      L.marker([cam.lat, cam.lng], { icon: cameraIcon }).addTo(cameraLayerGroup);
-    });
+    
+    function renderCameras() {
+      cameraLayerGroup.clearLayers();
+      cameraLocations.forEach(cam => {
+        const icon = L.divIcon({
+          className: 'custom-cone-icon',
+          html: getConeHtml(cam.heading),
+          iconSize: [60, 60],
+          iconAnchor: [30, 30],
+          popupAnchor: [0, -10]
+        });
+
+        L.marker([cam.lat, cam.lng], { icon: icon })
+         .bindPopup(`<b>${cam.id}</b><br><span style="color:#ef4444;font-weight:bold;">${cam.label} Optical Trap</span>`)
+         .addTo(cameraLayerGroup);
+      });
+      document.getElementById('stat-cameras').innerText = cameraLocations.length;
+    }
+    renderCameras();
 
     // Shadow Route Search Modal Logic
     function openSearch() {
@@ -598,7 +619,6 @@
       closeSearch();
       speakAlert("Calculating zero trace evasion vectors.");
 
-      // Nominatim Geocoding
       const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
       try {
         const res = await fetch(nomUrl);
@@ -607,7 +627,6 @@
         if (data.length > 0) {
           let destCoords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
           
-          // OSRM Routing Fetch
           let start = `${userCoords[1]},${userCoords[0]}`;
           let end = `${destCoords[1]},${destCoords[0]}`;
           let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;
@@ -618,12 +637,11 @@
           if (oData.routes && oData.routes.length > 0) {
             if (routePolyline) map.removeLayer(routePolyline);
             
-            // Draw Route Polyline
             let coords = oData.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
-            routePolyline = L.polyline(coords, { color: '#ef4444', weight: 6, dashArray: '8, 8' }).addTo(map);
+            // Changed Polyline Color to GhostLane Blue (#38bdf8)
+            routePolyline = L.polyline(coords, { color: '#38bdf8', weight: 6, dashArray: '8, 8' }).addTo(map);
             map.fitBounds(routePolyline.getBounds(), { padding: [60, 60] });
 
-            // Initialize Turn-by-Turn Navigation State
             routeSteps = oData.routes[0].legs[0].steps;
             currentStepIdx = 0;
             
@@ -651,7 +669,6 @@
       document.getElementById('turn-icon').innerText = icon;
       document.getElementById('turn-instruction').innerText = step.maneuver.instruction;
       
-      // Convert distance to feet or miles
       let distStr = "";
       if (step.distance > 1609.34) {
         distStr = (step.distance * 0.000621371).toFixed(1) + " mi";
@@ -661,7 +678,7 @@
       document.getElementById('turn-distance').innerText = "In " + distStr;
     }
 
-    // Live Geolocation Tracking & Navigation Engine Loop
+    // Live Geolocation Tracking & Navigation Engine
     if ("geolocation" in navigator) {
       navigator.geolocation.watchPosition(
         (pos) => {
@@ -681,7 +698,6 @@
             if (arrow) arrow.style.transform = `rotate(${h}deg)`;
           }
 
-          // Check Radar Proximity
           if (isRadarActive) {
             cameraLocations.forEach(cam => {
               if (map.distance(userCoords, [cam.lat, cam.lng]) < 180) { 
@@ -690,19 +706,16 @@
             });
           }
 
-          // Navigation Step Tracker Logic
           if (routeSteps.length > 0 && currentStepIdx < routeSteps.length) {
-            let nextManeuver = routeSteps[currentStepIdx].maneuver.location; // [lng, lat]
+            let nextManeuver = routeSteps[currentStepIdx].maneuver.location; 
             let distToTurn = map.distance(userCoords, [nextManeuver[1], nextManeuver[0]]);
             
-            // Update HUD Distance dynamically (convert meters to feet/miles)
             if (distToTurn > 1609.34) {
               document.getElementById('turn-distance').innerText = "In " + (distToTurn * 0.000621371).toFixed(1) + " mi";
             } else {
               document.getElementById('turn-distance').innerText = "In " + Math.round(distToTurn * 3.28084) + " ft";
             }
 
-            // Trigger next step if within 40 meters of turn coordinate
             if (distToTurn < 40) { 
               currentStepIdx++;
               if (currentStepIdx < routeSteps.length) {
@@ -762,11 +775,26 @@
     map.on('click', function(e) {
       if (logNodeMode) {
         const newId = `MANUAL-${Math.floor(1000 + Math.random() * 9000)}`;
-        L.marker([e.latlng.lat, e.latlng.lng], { icon: cameraIcon })
-          .bindPopup(`<b>${newId}</b><br><span style="color:#ef4444;font-weight:bold;">Manual Logged Node</span>`)
+        const dir = { h: 0, l: 'Northbound' }; // Default heading for manual nodes
+        
+        const newNode = { lat: e.latlng.lat, lng: e.latlng.lng, id: newId, heading: dir.h, label: dir.l };
+        cameraLocations.push(newNode);
+        localStorage.setItem('ghostlane_nodes_v2', JSON.stringify(cameraLocations));
+        
+        const icon = L.divIcon({
+          className: 'custom-cone-icon',
+          html: getConeHtml(newNode.heading),
+          iconSize: [60, 60],
+          iconAnchor: [30, 30],
+          popupAnchor: [0, -10]
+        });
+
+        L.marker([newNode.lat, newNode.lng], { icon: icon })
+          .bindPopup(`<b>${newNode.id}</b><br><span style="color:#ef4444;font-weight:bold;">Manual Logged Trap</span>`)
           .addTo(cameraLayerGroup);
         
         playPing(800, 'square', 0.12);
+        document.getElementById('stat-cameras').innerText = cameraLocations.length;
         alert("Optical surveillance node logged to your local mesh.");
       }
     });

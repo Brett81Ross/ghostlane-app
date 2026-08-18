@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: HEADING-UP ROTATION & RELATIVE TURN NAVIGATION
+// GHOSTLANE CORE ENGINE: STABLE PUCK VECTOR & STATE ISOLATION
 // ==========================================================
 
 const state = {
@@ -22,6 +22,7 @@ const state = {
   activeMode: 'ghost',
   lastRecalcTime: 0,
   simInterval: null,
+  isSimulating: false,
   turnWaypoints: []
 };
 
@@ -146,10 +147,20 @@ function initMap() {
   updateLedgerDisplay();
 }
 
-function setMapHeadingRotation(deg) {
-  const mapEl = document.getElementById('map');
-  if (mapEl) {
-    mapEl.style.transform = `rotate(${-deg}deg)`;
+function updateVehicleMarker(lat, lon, heading) {
+  const iconHtml = `<div class="user-arrow-puck" style="transform: rotate(${heading}deg);"><div class="arrow-core"></div></div>`;
+  const puckIcon = L.divIcon({
+    className: 'custom-puck-icon',
+    html: iconHtml,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+  });
+
+  if (!state.userMarker) {
+    state.userMarker = L.marker([lat, lon], { icon: puckIcon }).addTo(state.map);
+  } else {
+    state.userMarker.setLatLng([lat, lon]);
+    state.userMarker.setIcon(puckIcon);
   }
 }
 
@@ -239,7 +250,7 @@ function buildTurnInstructions(coords) {
   }
 }
 
-// Radar, Visual Turn HUD & Heading-Up Tracking
+// Radar, Visual Turn HUD & Active Navigation Tracking
 function evaluateActiveTracking(isSimulation = false) {
   if (!state.position) return;
   const { lat, lon, heading, speed } = state.position;
@@ -293,14 +304,11 @@ function evaluateActiveTracking(isSimulation = false) {
     }
   }
 
-  // 2. Active Navigation HUD & Heading-Up Map Rotation
+  // 2. Visual Turn HUD & Audio Navigation
   const turnHud = document.getElementById('turn-hud');
   
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination && turnHud) {
     state.map.setView([lat, lon], 17, { animate: false });
-    
-    // Rotate entire viewport so car heading is always UP
-    setMapHeadingRotation(heading);
 
     let upcomingTurn = null;
     if (state.turnWaypoints) {
@@ -336,14 +344,16 @@ function evaluateActiveTracking(isSimulation = false) {
 
     if (distToDest < 150) {
       speakVoiceAlert("You have arrived at your zero-trace destination.");
-      state.activeRouteCoords = null; state.activeDestination = null;
-      state.routeLayer.clearLayers(); state.dodgeLayer.clearLayers();
+      stopSimulation();
+      state.activeRouteCoords = null; 
+      state.activeDestination = null;
+      state.routeLayer.clearLayers(); 
+      state.dodgeLayer.clearLayers();
       turnHud.classList.add('turn-hidden');
-      setMapHeadingRotation(0); // Reset North on arrival
-      if (state.simInterval) clearInterval(state.simInterval);
       return;
     }
 
+    // Off-Route Check
     if (!isSimulation) {
       let minRouteDist = Infinity;
       for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
@@ -361,23 +371,42 @@ function evaluateActiveTracking(isSimulation = false) {
       }
     }
   } else {
-    if(turnHud) turnHud.classList.add('turn-hidden');
-    setMapHeadingRotation(0);
+    if (turnHud) turnHud.classList.add('turn-hidden');
   }
 }
 
-// LIVE SIMULATOR ENGINE (Dynamic Variable Throttle + Heading-Up Map)
-function runLiveSimulation() {
-  if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) return alert("You must generate a Shadow Route first before running the simulator.");
-  initAudioEngine();
-  
-  if (state.watchId !== null) {
-    navigator.geolocation.clearWatch(state.watchId); state.watchId = null;
-    document.getElementById('btn-toggle-radar').textContent = 'START RADAR';
-    document.getElementById('btn-toggle-radar').classList.remove('btn-radar-active');
+// Stop Simulation Cleanly
+function stopSimulation() {
+  if (state.simInterval) {
+    clearInterval(state.simInterval);
+    state.simInterval = null;
   }
+  state.isSimulating = false;
+  const btn = document.getElementById('btn-toggle-radar');
+  btn.textContent = 'START RADAR';
+  btn.classList.remove('btn-radar-active', 'btn-radar-sim');
+}
 
-  if (state.simInterval) clearInterval(state.simInterval);
+// LIVE SIMULATOR ENGINE (Isolated Loop with Dynamic Throttle)
+function runLiveSimulation() {
+  if (!state.activeRouteCoords || state.activeRouteCoords.length === 0) {
+    return alert("You must generate a Shadow Route first before running the simulator.");
+  }
+  
+  // Stop real GPS and clean up
+  if (state.watchId !== null) {
+    navigator.geolocation.clearWatch(state.watchId);
+    state.watchId = null;
+  }
+  stopSimulation();
+
+  initAudioEngine();
+  state.isSimulating = true;
+
+  const btn = document.getElementById('btn-toggle-radar');
+  btn.textContent = 'STOP DEMO';
+  btn.classList.add('btn-radar-sim');
+
   speakVoiceAlert("Navigation simulation initiated.");
   
   document.getElementById('panel-routing').classList.add('panel-hidden');
@@ -391,8 +420,7 @@ function runLiveSimulation() {
 
   state.simInterval = setInterval(() => {
     if (currentSegIdx >= coords.length - 1) { 
-      clearInterval(state.simInterval); 
-      setMapHeadingRotation(0);
+      stopSimulation();
       return; 
     }
 
@@ -430,11 +458,11 @@ function runLiveSimulation() {
       distTraveledOnSeg -= segDist;
       currentSegIdx++;
       if (currentSegIdx >= coords.length - 1) { 
-        clearInterval(state.simInterval); 
-        setMapHeadingRotation(0);
+        stopSimulation();
         return; 
       }
-      p1 = coords[currentSegIdx]; p2 = coords[currentSegIdx + 1];
+      p1 = coords[currentSegIdx]; 
+      p2 = coords[currentSegIdx + 1];
       segDist = getDistanceFeet(p1[0], p1[1], p2[0], p2[1]);
     }
 
@@ -448,12 +476,7 @@ function runLiveSimulation() {
     document.getElementById('stat-speed').innerHTML = `${displayMph} <small>SIM</small>`;
     document.getElementById('stat-heading').innerHTML = `${Math.round(currentHeading)}°`;
 
-    if (!state.userMarker) {
-        state.userMarker = L.circleMarker([currentLat, currentLon], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map);
-    } else { 
-        state.userMarker.setLatLng([currentLat, currentLon]); 
-    }
-
+    updateVehicleMarker(currentLat, currentLon, currentHeading);
     evaluateActiveTracking(true);
   }, tickRateMs); 
 }
@@ -461,19 +484,25 @@ function runLiveSimulation() {
 // EXCLUSION-ZONE ROUTING ENGINE
 async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc = false) {
   if (!state.position) throw new Error('Active GPS radar is required. Tap START RADAR first.');
-  const start = state.position; const end = targetCoords; const btn = document.getElementById('btn-calculate-route');
+  const start = state.position; 
+  const end = targetCoords; 
+  const btn = document.getElementById('btn-calculate-route');
 
   if (!isAutoRecalc) {
     let destInCone = state.cameras.some(c => getDistanceFeet(end.lat, end.lon, c.lat, c.lon) < 400);
     if (destInCone && mode === 'ghost') alert("CRITICAL: Your destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
-    btn.textContent = 'Threading Zero-Trace Route...'; btn.style.opacity = '0.7'; btn.style.pointerEvents = 'none';
+    btn.textContent = 'Threading Zero-Trace Route...'; 
+    btn.style.opacity = '0.7'; 
+    btn.style.pointerEvents = 'none';
   }
 
   try {
-    let routeGeoJson = null; let finalIntercepts = 0;
+    let routeGeoJson = null; 
+    let finalIntercepts = 0;
 
     if (mode === 'ghost') {
-      const routeMidLat = (start.lat + end.lat) / 2; const routeMidLon = (start.lon + end.lon) / 2;
+      const routeMidLat = (start.lat + end.lat) / 2; 
+      const routeMidLon = (start.lon + end.lon) / 2;
       const maxDist = getDistanceFeet(start.lat, start.lon, end.lat, end.lon) + 26400;
 
       const relevantCameras = state.cameras.filter(cam => getDistanceFeet(routeMidLat, routeMidLon, cam.lat, cam.lon) < maxDist);
@@ -503,7 +532,8 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
       finalIntercepts = hitCams.size;
     }
 
-    state.routeLayer.clearLayers(); state.dodgeLayer.clearLayers();
+    state.routeLayer.clearLayers(); 
+    state.dodgeLayer.clearLayers();
     const leafletCoords = routeGeoJson.geometry.coordinates.map(c => [c[1], c[0]]);
     const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
     
@@ -521,13 +551,19 @@ async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc =
     document.getElementById('res-duration').textContent = `${Math.round(durationSeconds / 60)} min`;
     document.getElementById('res-intercepts').textContent = finalIntercepts;
 
-    state.activeRouteCoords = leafletCoords; state.activeDestination = targetCoords; state.activeMode = mode;
+    state.activeRouteCoords = leafletCoords; 
+    state.activeDestination = targetCoords; 
+    state.activeMode = mode;
     
     evaluateActiveTracking(isAutoRecalc);
 
   } catch (err) { if (!isAutoRecalc) alert(err.message); } 
   finally {
-    if (!isAutoRecalc) { btn.textContent = 'Generate Navigation Vectors'; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+    if (!isAutoRecalc) { 
+      btn.textContent = 'Generate Navigation Vectors'; 
+      btn.style.opacity = '1'; 
+      btn.style.pointerEvents = 'auto'; 
+    }
   }
 }
 
@@ -554,20 +590,33 @@ function saveStoredCameras() { localStorage.setItem('ghostlane_nodes', JSON.stri
 function loadStoredCameras() { const raw = localStorage.getItem('ghostlane_nodes'); if (raw) { try { state.cameras = JSON.parse(raw); renderCameraNodes(); } catch (e) { state.cameras = []; } } }
 
 function toggleLiveRadar() {
-  initAudioEngine(); const btn = document.getElementById('btn-toggle-radar');
+  initAudioEngine(); 
+  const btn = document.getElementById('btn-toggle-radar');
   const turnHud = document.getElementById('turn-hud');
-  
-  if (state.watchId !== null) {
-    navigator.geolocation.clearWatch(state.watchId); state.watchId = null;
-    btn.textContent = 'START RADAR'; btn.classList.remove('btn-radar-active');
-    state.activeRouteCoords = null; state.activeDestination = null;
-    state.routeLayer.clearLayers(); if (state.simInterval) clearInterval(state.simInterval);
-    if(turnHud) turnHud.classList.add('turn-hidden');
-    setMapHeadingRotation(0);
+
+  // If simulation is active, clicking this button stops the demo
+  if (state.isSimulating) {
+    stopSimulation();
     return;
   }
+  
+  if (state.watchId !== null) {
+    navigator.geolocation.clearWatch(state.watchId); 
+    state.watchId = null;
+    btn.textContent = 'START RADAR'; 
+    btn.classList.remove('btn-radar-active', 'btn-radar-sim');
+    state.activeRouteCoords = null; 
+    state.activeDestination = null;
+    state.routeLayer.clearLayers(); 
+    if (turnHud) turnHud.classList.add('turn-hidden');
+    return;
+  }
+
   if (!('geolocation' in navigator)) return alert('Geolocation permissions required for live radar.');
-  btn.textContent = 'RADAR LIVE'; btn.classList.add('btn-radar-active');
+  
+  stopSimulation();
+  btn.textContent = 'RADAR LIVE'; 
+  btn.classList.add('btn-radar-active');
 
   state.watchId = navigator.geolocation.watchPosition(
     pos => {
@@ -578,8 +627,11 @@ function toggleLiveRadar() {
       document.getElementById('stat-speed').innerHTML = `${speedMph} <small>MPH</small>`;
       document.getElementById('stat-heading').innerHTML = `${currentHeading}°`;
 
-      if (!state.userMarker) { state.userMarker = L.circleMarker([latitude, longitude], { radius: 8, fillColor: '#38bdf8', color: '#ffffff', weight: 2, fillOpacity: 1 }).addTo(state.map); if (!state.activeRouteCoords) state.map.setView([latitude, longitude], 15); } 
-      else { state.userMarker.setLatLng([latitude, longitude]); }
+      updateVehicleMarker(latitude, longitude, currentHeading);
+
+      if (!state.activeRouteCoords) {
+        state.map.setView([latitude, longitude], 15);
+      }
       evaluateActiveTracking();
     },
     err => console.warn(`GPS Error: ${err.message}`), { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
@@ -588,12 +640,12 @@ function toggleLiveRadar() {
 
 // UI Event Binding
 document.addEventListener('DOMContentLoaded', () => {
-  initMap(); document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
+  initMap(); 
+  document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
   document.getElementById('btn-sync-mesh').addEventListener('click', () => { const center = state.position ? state.position : state.map.getCenter(); syncMeshCameras(center.lat, center.lon || center.lng, 5); });
   document.getElementById('btn-recenter').addEventListener('click', () => { 
     if (state.position) {
       state.map.setView([state.position.lat, state.position.lon], 16);
-      if (!state.activeRouteCoords) setMapHeadingRotation(0);
     } 
   });
 
@@ -610,7 +662,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('.btn-close').forEach(btn => {
     btn.addEventListener('click', () => {
-      const panelId = btn.getAttribute('data-close'); document.getElementById(panelId).classList.add('panel-hidden');
+      const panelId = btn.getAttribute('data-close'); 
+      document.getElementById(panelId).classList.add('panel-hidden');
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       document.querySelector('[data-tab="radar-view"]').classList.add('active');
     });
@@ -631,13 +684,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-simulate-route').addEventListener('click', runLiveSimulation);
 
   document.getElementById('btn-submit-node').addEventListener('click', () => {
-    const hardware = document.getElementById('node-hardware').value; const heading = parseInt(document.getElementById('node-heading').value, 10);
-    const fov = parseInt(document.getElementById('node-fov').value, 10); const range = parseInt(document.getElementById('node-range').value, 10) || 400;
-    const mode = document.getElementById('node-coords-mode').value; let targetLat, targetLon;
-    if (mode === 'current' && state.position) { targetLat = state.position.lat; targetLon = state.position.lon; } else { const center = state.map.getCenter(); targetLat = center.lat; targetLon = center.lng; }
+    const hardware = document.getElementById('node-hardware').value; 
+    const heading = parseInt(document.getElementById('node-heading').value, 10);
+    const fov = parseInt(document.getElementById('node-fov').value, 10); 
+    const range = parseInt(document.getElementById('node-range').value, 10) || 400;
+    const mode = document.getElementById('node-coords-mode').value; 
+    let targetLat, targetLon;
+    if (mode === 'current' && state.position) { targetLat = state.position.lat; targetLon = state.position.lon; } 
+    else { const center = state.map.getCenter(); targetLat = center.lat; targetLon = center.lng; }
     state.cameras.push({ id: `custom-${Date.now()}`, lat: targetLat, lon: targetLon, heading, fov, range, hardware, source: 'Community Verified' });
-    saveStoredCameras(); renderCameraNodes();
-    document.getElementById('panel-verify').classList.add('panel-hidden'); document.querySelector('[data-tab="radar-view"]').classList.add('active');
+    saveStoredCameras(); 
+    renderCameraNodes();
+    document.getElementById('panel-verify').classList.add('panel-hidden'); 
+    document.querySelector('[data-tab="radar-view"]').classList.add('active');
     alert('Node authenticated and written to local mesh!');
   });
 

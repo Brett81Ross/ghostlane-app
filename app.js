@@ -1,5 +1,5 @@
 // ==========================================================
-// GHOSTLANE CORE ENGINE: RADAR, VECTOR FOV & SHADOW ROUTING (FEET / MILES)
+// GHOSTLANE CORE ENGINE: EXTREME EVASION MATRIX (FEET / MILES)
 // ==========================================================
 
 const state = {
@@ -76,6 +76,20 @@ function getAzimuth(lat1, lon1, lat2, lon2) {
   const x = Math.cos(lat1 * rad) * Math.sin(lat2 * rad) -
             Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos((lon2 - lon1) * rad);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+// Mathematical Detour Generator (Finds points far away from the direct path)
+function getDestinationPoint(lat, lon, bearing, distanceFeet) {
+  const R_FEET = 20902231;
+  const d = distanceFeet / R_FEET;
+  const radLat = lat * Math.PI / 180;
+  const radLon = lon * Math.PI / 180;
+  const radBearing = bearing * Math.PI / 180;
+
+  const newLat = Math.asin(Math.sin(radLat) * Math.cos(d) + Math.cos(radLat) * Math.sin(d) * Math.cos(radBearing));
+  const newLon = radLon + Math.atan2(Math.sin(radBearing) * Math.sin(d) * Math.cos(radLat), Math.cos(d) - Math.sin(radLat) * Math.sin(newLat));
+
+  return { lat: newLat * 180 / Math.PI, lon: newLon * 180 / Math.PI };
 }
 
 function computeFovPolygonPoints(lat, lon, headingDeg, fovDeg, distanceFeet = 400) {
@@ -160,7 +174,7 @@ function renderCameraNodes() {
   document.getElementById('stat-cams').textContent = state.cameras.length;
 }
 
-// Resilient Network Sync with Multi-Server Failover (POST Request)
+// Resilient Network Sync
 async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   if (!lat || !lon) {
     alert("Location data is missing. Please wait for map to load or tap START RADAR.");
@@ -175,7 +189,6 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
 
   const query = `[out:json][timeout:25];(node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon}););out body;`;
   
-  // List of backup open-source database endpoints
   const endpoints = [
     'https://overpass-api.de/api/interpreter',
     'https://lz4.overpass-api.de/api/interpreter',
@@ -194,7 +207,7 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
         });
         if (res.ok) {
           data = await res.json();
-          break; // Successfully connected, break out of loop
+          break;
         }
       } catch (e) {
         console.warn(`Server ${url} failed. Rerouting to backup...`);
@@ -246,7 +259,7 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
     }
   } catch (err) {
     console.error('Failed to sync mesh data:', err);
-    alert(`Connection Error: ${err.message}. If you are using Brave Browser or an Ad-Blocker, please turn Shields OFF for this site.`);
+    alert(`Connection Error: ${err.message}. If you are using Brave Browser, please turn Shields OFF for this site.`);
   } finally {
     btn.style.opacity = '1';
     btn.style.pointerEvents = 'auto';
@@ -308,45 +321,140 @@ function evaluateDirectionalAlerts() {
   }
 }
 
-// Shadow Routing with Address Support
+// NEW Extreme Evasion Routing Matrix (Avoids All Cameras, Ignoring ETA)
 async function calculateShadowRoute(targetCoords, mode = 'ghost') {
   if (!state.position) {
     throw new Error('Active GPS radar is required. Tap START RADAR first.');
   }
 
-  const start = `${state.position.lon},${state.position.lat}`;
-  const end = `${targetCoords.lon},${targetCoords.lat}`;
-  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;
+  const start = state.position;
+  const end = targetCoords;
+  let evaluatedRoutes = [];
 
-  const res = await fetch(osrmUrl);
-  const data = await res.json();
-  if (!data.routes || data.routes.length === 0) throw new Error('No drivable route discovered to this location.');
+  // Helper Engine to fetch and score a batch of routes
+  async function fetchAndScoreRoutes(waypoints = []) {
+    let coordsString = `${start.lon},${start.lat}`;
+    waypoints.forEach(wp => { coordsString += `;${wp.lon},${wp.lat}`; });
+    coordsString += `;${end.lon},${end.lat}`;
 
-  const primaryRoute = data.routes[0];
-  const coordinates = primaryRoute.geometry.coordinates;
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson&alternatives=3`;
+    
+    try {
+      const res = await fetch(osrmUrl);
+      const data = await res.json();
+      if (!data.routes) return;
 
-  let intercepts = 0;
-  coordinates.forEach(coord => {
-    const [rLon, rLat] = coord;
-    state.cameras.forEach(cam => {
-      if (getDistanceFeet(rLat, rLon, cam.lat, cam.lon) < 200) {
-        intercepts++;
+      data.routes.forEach(route => {
+        let interceptedCamIds = new Set();
+        const coordinates = route.geometry.coordinates;
+
+        // Drive the simulation to check for camera cones
+        coordinates.forEach(coord => {
+          const [rLon, rLat] = coord;
+          state.cameras.forEach(cam => {
+            // Buffer zone: If path comes within 300 feet of a camera, it's busted.
+            if (getDistanceFeet(rLat, rLon, cam.lat, cam.lon) < 300) {
+              interceptedCamIds.add(cam.id);
+            }
+          });
+        });
+
+        evaluatedRoutes.push({
+          intercepts: interceptedCamIds.size,
+          distance: route.distance,
+          duration: route.duration,
+          coordinates: coordinates
+        });
+      });
+    } catch (e) {
+      console.warn("Evasion ping failed:", e);
+    }
+  }
+
+  // 1. Initial Standard Ping (Direct paths)
+  await fetchAndScoreRoutes();
+
+  if (evaluatedRoutes.length === 0) throw new Error('No drivable route discovered.');
+
+  // 2. Extreme Evasion Matrix Trigger (Only if Ghost mode is on and cameras are hit)
+  if (mode === 'ghost') {
+    evaluatedRoutes.sort((a, b) => a.intercepts - b.intercepts);
+
+    if (evaluatedRoutes[0].intercepts > 0) {
+      document.getElementById('btn-calculate-route').textContent = 'Evasion Matrix Active...';
+
+      // Find the direct center point between you and your destination
+      const midLat = (start.lat + end.lat) / 2;
+      const midLon = (start.lon + end.lon) / 2;
+      const mainBearing = getAzimuth(start.lat, start.lon, end.lat, end.lon);
+
+      // Force radical detours completely out of the way: 1.5 miles, 3.5 miles, and 6 miles laterally
+      const detourDistancesFeet = [7920, 18480, 31680];
+
+      for (let dist of detourDistancesFeet) {
+        // Point deeply to the left of the main route
+        const wpLeft = getDestinationPoint(midLat, midLon, (mainBearing - 90 + 360) % 360, dist);
+        // Point deeply to the right of the main route
+        const wpRight = getDestinationPoint(midLat, midLon, (mainBearing + 90) % 360, dist);
+
+        // Ping OSRM to route through these deep detours
+        await fetchAndScoreRoutes([wpLeft]);
+        await fetchAndScoreRoutes([wpRight]);
+
+        // Sort again. If we found a zero-trace route, stop processing immediately to save time.
+        evaluatedRoutes.sort((a, b) => a.intercepts - b.intercepts);
+        if (evaluatedRoutes[0].intercepts === 0) {
+          break;
+        }
       }
+    }
+  }
+
+  // 3. Final Sorting & Execution
+  if (mode === 'ghost') {
+    // Sort strictly by cameras first. If tied, pick the shortest of the evasion routes.
+    evaluatedRoutes.sort((a, b) => {
+      if (a.intercepts !== b.intercepts) return a.intercepts - b.intercepts;
+      return a.duration - b.duration;
     });
+  } else {
+    // Fastest mode: ignore cameras entirely and sort by duration
+    evaluatedRoutes.sort((a, b) => a.duration - b.duration);
+  }
+
+  const bestRoute = evaluatedRoutes[0];
+  state.routeLayer.clearLayers();
+
+  // Draw the rejected, dangerous alternate routes faintly
+  evaluatedRoutes.forEach(routeObj => {
+    if (routeObj === bestRoute) return;
+    const altLeafletCoords = routeObj.coordinates.map(c => [c[1], c[0]]);
+    L.polyline(altLeafletCoords, { color: '#334155', weight: 4, opacity: 0.3, dashArray: '8, 8' }).addTo(state.routeLayer);
   });
 
-  state.routeLayer.clearLayers();
-  const leafletCoords = coordinates.map(c => [c[1], c[0]]);
+  // Draw the thick winning route
+  const leafletCoords = bestRoute.coordinates.map(c => [c[1], c[0]]);
   const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
+  L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
+  
+  // Zoom out slightly more to show extreme detours
+  state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [60, 60] });
 
-  L.polyline(leafletCoords, { color: routeColor, weight: 6, opacity: 0.85 }).addTo(state.routeLayer);
-  state.map.fitBounds(L.polyline(leafletCoords).getBounds(), { padding: [50, 50] });
-
-  const totalMiles = (primaryRoute.distance * METERS_TO_MILES).toFixed(1);
+  // Update UI Stats
+  const totalMiles = (bestRoute.distance * METERS_TO_MILES).toFixed(1);
   document.getElementById('route-results').classList.remove('route-results-hidden');
   document.getElementById('res-distance').textContent = `${totalMiles} mi`;
-  document.getElementById('res-duration').textContent = `${Math.round(primaryRoute.duration / 60)} min`;
-  document.getElementById('res-intercepts').textContent = intercepts;
+  document.getElementById('res-duration').textContent = `${Math.round(bestRoute.duration / 60)} min`;
+  document.getElementById('res-intercepts').textContent = bestRoute.intercepts;
+
+  // Alerts
+  if (mode === 'ghost') {
+     if (bestRoute.intercepts > 0) {
+        setTimeout(() => { alert(`Extreme Evasion Matrix exhausted. The local grid is heavily saturated. Safest route still passes ${bestRoute.intercepts} camera(s).`); }, 500);
+     } else if (bestRoute.duration > evaluatedRoutes.find(r => true).duration + 300) {
+        setTimeout(() => { alert(`Complete evasion achieved. You are taking a heavy detour to maintain zero trace.`); }, 500);
+     }
+  }
 }
 
 // Ledger & Storage

@@ -1,0 +1,21 @@
+{
+  "name": "GhostLane™",
+  "short_name": "GhostLane",
+  "description": "Zero-Trace Automotive Radar & Navigation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06080e",
+  "theme_color": "#080d1a",
+  "icons": [
+    {
+      "src": "logo-gl.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo-gl.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

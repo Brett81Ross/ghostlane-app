@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>GhostLane™ | Zero-Trace Automotive Radar</title>
+  <title>GhostLane™ | Zero-Trace Automotive Radar & Navigation</title>
   
   <!-- Leaflet Map CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -113,6 +113,45 @@
 
     .hud-stat-value.score-green {
       color: #4ade80;
+    }
+
+    /* Turn-by-Turn Navigation HUD */
+    #turn-hud {
+      display: none;
+      position: absolute;
+      top: 130px;
+      left: 12px;
+      right: 12px;
+      background: rgba(239, 68, 68, 0.95);
+      border: 1px solid #fca5a5;
+      border-radius: 12px;
+      padding: 14px 18px;
+      z-index: 1060;
+      color: white;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+      backdrop-filter: blur(10px);
+    }
+
+    .turn-icon-box {
+      font-size: 2.2rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .turn-text h4 {
+      font-size: 1.1rem;
+      font-weight: 800;
+      margin: 0;
+      letter-spacing: 0.5px;
+    }
+
+    .turn-text p {
+      font-size: 0.8rem;
+      margin: 4px 0 0 0;
+      font-weight: 600;
+      opacity: 0.9;
     }
 
     /* Map Interface */
@@ -269,6 +308,84 @@
       filter: drop-shadow(0 0 8px #38bdf8);
       transform-origin: center 15px;
     }
+
+    /* Shadow Route Search Modal */
+    .search-modal {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(5, 7, 13, 0.9);
+      z-index: 2000;
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .search-content {
+      background: #0b1120;
+      border: 1px solid #f97316;
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9);
+    }
+
+    .search-content h3 {
+      color: #f97316;
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+    }
+
+    .search-content input {
+      width: 100%;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid #1e293b;
+      background: #05070d;
+      color: #ffffff;
+      margin-bottom: 20px;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    .search-content input::placeholder {
+      color: #64748b;
+    }
+
+    .search-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .search-actions button {
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-weight: 800;
+      font-size: 0.9rem;
+      border: none;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+
+    .btn-cancel {
+      background: #1e293b;
+      color: #ffffff;
+    }
+
+    .btn-route {
+      background: #ef4444;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-route:active {
+      transform: scale(0.96);
+    }
   </style>
 </head>
 <body>
@@ -278,7 +395,7 @@
     <img src="logo-gl.png" alt="GL Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/38/0b1120/38bdf8?text=GL'">
     <div class="brand-text-container">
       <span class="brand-title">GhostLane™</span>
-      <span class="brand-subtitle"> | Zero-Trace Automotive Radar & Navigation</span>
+      <span class="brand-subtitle"> | Zero-Trace Automotive Radar</span>
     </div>
   </header>
 
@@ -302,9 +419,30 @@
     </div>
   </div>
 
+  <!-- Turn-by-Turn HUD -->
+  <div id="turn-hud">
+    <div class="turn-icon-box" id="turn-icon">⬆</div>
+    <div class="turn-text">
+      <h4 id="turn-instruction">Proceed on Shadow Vector</h4>
+      <p id="turn-distance">-- ft</p>
+    </div>
+  </div>
+
   <!-- Map Canvas -->
   <div id="map-wrapper">
     <div id="map"></div>
+
+    <!-- Shadow Route Search Modal -->
+    <div id="search-modal" class="search-modal">
+      <div class="search-content">
+        <h3>Deploy Shadow Route</h3>
+        <input type="text" id="dest-address" placeholder="Enter target address...">
+        <div class="search-actions">
+          <button class="btn-cancel" onclick="closeSearch()">Abort</button>
+          <button class="btn-route" onclick="executeSearch()">Engage Vector</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Floating Right Side Controls -->
     <div class="floating-actions" id="floating-ctrls">
@@ -312,7 +450,7 @@
         <span id="radar-btn-text">START RADAR</span>
       </button>
 
-      <button class="btn-circle" onclick="refreshEvasionRoute()" title="Shadow Route">
+      <button class="btn-circle" onclick="openSearch()" title="Shadow Route">
         <span>🔀</span>
       </button>
 
@@ -328,7 +466,7 @@
       <span class="tab-icon">📡</span>
       <span>Radar</span>
     </div>
-    <div class="nav-tab tab-orange" id="tab-shadow" onclick="switchTab('shadow')">
+    <div class="nav-tab tab-orange" id="tab-shadow" onclick="openSearch()">
       <span class="tab-icon">🔀</span>
       <span>Shadow Route</span>
     </div>
@@ -343,7 +481,7 @@
   </nav>
 
   <script>
-    // Audio Radar Synthesizer
+    // Audio Context for Radar Pings
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playPing(freq = 920, type = 'sine', duration = 0.1) {
       if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -363,13 +501,28 @@
       }
     }
 
-    // Default Coordinates (Oklahoma City Metro)
-    let userCoords = [35.3450, -97.4350];
+    // Text-to-Speech Engine for Turn-by-Turn Navigation
+    const synth = window.speechSynthesis;
+    function speakAlert(text) {
+      if (synth.speaking) synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      synth.speak(utterance);
+    }
+
+    // State Variables
+    let userCoords = [35.4676, -97.5164];
     let isRadarActive = false;
     let logNodeMode = false;
     let userMarker = null;
+    let routePolyline = null;
+    
+    // Navigation State
+    let routeSteps = [];
+    let currentStepIdx = 0;
 
-    // Initialize Map with High-Contrast Dark Tiles
+    // Initialize Map
     const map = L.map('map', {
       zoomControl: false,
       attributionControl: false
@@ -380,28 +533,27 @@
       subdomains: 'abcd'
     }).addTo(map);
 
-    // Prevent Map Click Conflict on Floating Controls
     const floatControls = document.getElementById('floating-ctrls');
     if (floatControls) {
       L.DomEvent.disableClickPropagation(floatControls);
       L.DomEvent.disableScrollPropagation(floatControls);
     }
 
-    // User Location Puck (Blue Triangle Directional Pointer)
+    // User Location Puck
     const puckIcon = L.divIcon({
       className: 'user-puck-wrapper',
       html: '<div class="user-arrow-puck" id="user-arrow"></div>',
       iconSize: [20, 20]
     });
-    userMarker = L.marker(userCoords, { icon: puckIcon }).addTo(map);
+    userMarker = L.marker(userCoords, { icon: puckIcon, zIndexOffset: 1000 }).addTo(map);
 
-    // Generate 134 Realistic Camera Clusters Across Oklahoma City Metro (Hardcoded Simulation)
+    // Generate 134 Realistic Camera Clusters (Hardcoded Simulation)
     const cameraLocations = [];
     const basePoints = [
-      { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, // Downtown OKC
-      { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, // Bethany
-      { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, // Midwest City
-      { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  // Moore
+      { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
+      { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
+      { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, 
+      { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  
     ];
 
     basePoints.forEach(bp => {
@@ -416,7 +568,6 @@
       }
     });
 
-    // Render Camera Rings
     const cameraIcon = L.divIcon({
       className: 'cam-marker-wrapper',
       html: '<div class="camera-glow-marker"><div class="camera-glow-core"></div></div>',
@@ -424,19 +575,93 @@
     });
 
     const cameraLayerGroup = L.layerGroup().addTo(map);
+    cameraLocations.forEach(cam => {
+      L.marker([cam.lat, cam.lng], { icon: cameraIcon }).addTo(cameraLayerGroup);
+    });
 
-    function renderCameraNodes() {
-      cameraLayerGroup.clearLayers();
-      cameraLocations.forEach(cam => {
-        L.marker([cam.lat, cam.lng], { icon: cameraIcon })
-          .bindPopup(`<b>${cam.id}</b><br><span style="color:#ef4444;font-weight:bold;">Flock ALPR Surveillance Node</span>`)
-          .addTo(cameraLayerGroup);
-      });
-      document.getElementById('stat-cameras').innerText = cameraLocations.length;
+    // Shadow Route Search Modal Logic
+    function openSearch() {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-shadow').classList.add('active');
+      document.getElementById('search-modal').style.display = 'flex';
+      playPing(1000, 'sine', 0.1);
     }
-    renderCameraNodes();
 
-    // Live Geolocation
+    function closeSearch() {
+      document.getElementById('search-modal').style.display = 'none';
+    }
+
+    // Address Geocoding and OSRM Route Fetching
+    async function executeSearch() {
+      const query = document.getElementById('dest-address').value;
+      if (!query) return;
+      closeSearch();
+      speakAlert("Calculating zero trace evasion vectors.");
+
+      // Nominatim Geocoding
+      const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+      try {
+        const res = await fetch(nomUrl);
+        const data = await res.json();
+        
+        if (data.length > 0) {
+          let destCoords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+          
+          // OSRM Routing Fetch
+          let start = `${userCoords[1]},${userCoords[0]}`;
+          let end = `${destCoords[1]},${destCoords[0]}`;
+          let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;
+          
+          const oRes = await fetch(osrmUrl);
+          const oData = await oRes.json();
+
+          if (oData.routes && oData.routes.length > 0) {
+            if (routePolyline) map.removeLayer(routePolyline);
+            
+            // Draw Route Polyline
+            let coords = oData.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
+            routePolyline = L.polyline(coords, { color: '#ef4444', weight: 6, dashArray: '8, 8' }).addTo(map);
+            map.fitBounds(routePolyline.getBounds(), { padding: [60, 60] });
+
+            // Initialize Turn-by-Turn Navigation State
+            routeSteps = oData.routes[0].legs[0].steps;
+            currentStepIdx = 0;
+            
+            document.getElementById('turn-hud').style.display = 'flex';
+            updateTurnHUD(routeSteps[currentStepIdx]);
+            speakAlert("Shadow route acquired. " + routeSteps[currentStepIdx].maneuver.instruction);
+          }
+        } else {
+          speakAlert("Target destination not found.");
+          alert("Location not found.");
+        }
+      } catch (err) {
+        console.error(err);
+        speakAlert("Routing network error.");
+      }
+    }
+
+    function updateTurnHUD(step) {
+      const modifier = step.maneuver.modifier || '';
+      let icon = '⬆';
+      if (modifier.includes('right')) icon = '↱';
+      if (modifier.includes('left')) icon = '↰';
+      if (modifier.includes('uturn')) icon = '↻';
+      
+      document.getElementById('turn-icon').innerText = icon;
+      document.getElementById('turn-instruction').innerText = step.maneuver.instruction;
+      
+      // Convert distance to feet or miles
+      let distStr = "";
+      if (step.distance > 1609.34) {
+        distStr = (step.distance * 0.000621371).toFixed(1) + " mi";
+      } else {
+        distStr = Math.round(step.distance * 3.28084) + " ft";
+      }
+      document.getElementById('turn-distance').innerText = "In " + distStr;
+    }
+
+    // Live Geolocation Tracking & Navigation Engine Loop
     if ("geolocation" in navigator) {
       navigator.geolocation.watchPosition(
         (pos) => {
@@ -456,8 +681,39 @@
             if (arrow) arrow.style.transform = `rotate(${h}deg)`;
           }
 
+          // Check Radar Proximity
           if (isRadarActive) {
-            checkRadarProximity(userCoords);
+            cameraLocations.forEach(cam => {
+              if (map.distance(userCoords, [cam.lat, cam.lng]) < 180) { 
+                playPing(440, 'sawtooth', 0.15);
+              }
+            });
+          }
+
+          // Navigation Step Tracker Logic
+          if (routeSteps.length > 0 && currentStepIdx < routeSteps.length) {
+            let nextManeuver = routeSteps[currentStepIdx].maneuver.location; // [lng, lat]
+            let distToTurn = map.distance(userCoords, [nextManeuver[1], nextManeuver[0]]);
+            
+            // Update HUD Distance dynamically (convert meters to feet/miles)
+            if (distToTurn > 1609.34) {
+              document.getElementById('turn-distance').innerText = "In " + (distToTurn * 0.000621371).toFixed(1) + " mi";
+            } else {
+              document.getElementById('turn-distance').innerText = "In " + Math.round(distToTurn * 3.28084) + " ft";
+            }
+
+            // Trigger next step if within 40 meters of turn coordinate
+            if (distToTurn < 40) { 
+              currentStepIdx++;
+              if (currentStepIdx < routeSteps.length) {
+                updateTurnHUD(routeSteps[currentStepIdx]);
+                speakAlert(routeSteps[currentStepIdx].maneuver.instruction);
+              } else {
+                speakAlert("Target destination reached. Zero trace confirmed.");
+                document.getElementById('turn-hud').style.display = 'none';
+                routeSteps = [];
+              }
+            }
           }
         },
         (err) => console.log("GPS Location unavailable:", err.message),
@@ -465,15 +721,7 @@
       );
     }
 
-    function checkRadarProximity(pos) {
-      cameraLocations.forEach(cam => {
-        const d = map.distance(pos, [cam.lat, cam.lng]);
-        if (d < 180) { 
-          playPing(440, 'sawtooth', 0.15);
-        }
-      });
-    }
-
+    // UI Buttons
     function toggleRadarMode() {
       isRadarActive = !isRadarActive;
       const btn = document.getElementById('radar-toggle-btn');
@@ -492,45 +740,36 @@
     function centerVehicleLocation() {
       if (userMarker) {
         map.panTo(userCoords, { animate: true, duration: 0.5 });
-        map.setZoom(13);
+        map.setZoom(15);
         playPing(1100, 'sine', 0.1);
       }
     }
 
-    function refreshEvasionRoute() {
-      playPing(1200, 'triangle', 0.18);
-      alert("GhostLane: Recalculating zero-trace shadow vectors around active surveillance clusters.");
-    }
-
-    // Tap Map to Add Camera when Log Node Tab is Active
-    map.on('click', function(e) {
-      if (logNodeMode) {
-        cameraLocations.push({
-          lat: e.latlng.lat,
-          lng: e.latlng.lng,
-          id: `FLOCK-${Math.floor(1000 + Math.random() * 9000)}`
-        });
-        renderCameraNodes();
-        playPing(800, 'square', 0.12);
-        alert("Optical surveillance node logged to local mesh.");
-      }
-    });
-
-    // Tab Navigation Switcher
     function switchTab(tabId) {
       document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
       document.getElementById(`tab-${tabId}`).classList.add('active');
 
       logNodeMode = (tabId === 'log');
 
-      if (tabId === 'shadow') {
-        alert("Shadow Route Mode: Auto-evasion active across all " + cameraLocations.length + " grid nodes.");
-      } else if (tabId === 'ledger') {
+      if (tabId === 'ledger') {
         alert(`Surveillance Ledger: ${cameraLocations.length} optical traps currently cataloged.`);
       } else if (tabId === 'log') {
-        alert("Log Node Mode: Tap anywhere on the map to manually mark a new camera.");
+        alert("Log Node Mode: Tap anywhere on the map to permanently mark a new camera.");
       }
     }
+
+    // Manual Node Logging
+    map.on('click', function(e) {
+      if (logNodeMode) {
+        const newId = `MANUAL-${Math.floor(1000 + Math.random() * 9000)}`;
+        L.marker([e.latlng.lat, e.latlng.lng], { icon: cameraIcon })
+          .bindPopup(`<b>${newId}</b><br><span style="color:#ef4444;font-weight:bold;">Manual Logged Node</span>`)
+          .addTo(cameraLayerGroup);
+        
+        playPing(800, 'square', 0.12);
+        alert("Optical surveillance node logged to your local mesh.");
+      }
+    });
   </script>
 </body>
 </html>

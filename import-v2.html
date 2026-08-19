@@ -2,100 +2,335 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GhostLane DeFlock Importer V2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>GhostLane™ Cloud Mesh Utility</title>
+  <meta name="theme-color" content="#05070d">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    * { box-sizing: border-box; font-family: -apple-system, sans-serif; }
-    body { background-color: #05070d; color: #f8fafc; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-    h2 { color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; }
-    p { color: #94a3b8; text-align: center; font-size: 0.9rem; margin-bottom: 30px; max-width: 400px; }
-    .btn-import { background: #ef4444; color: #ffffff; border: none; padding: 16px 32px; border-radius: 12px; font-size: 1.1rem; font-weight: 900; text-transform: uppercase; cursor: pointer; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
-    .btn-import:active { transform: scale(0.95); }
-    .btn-import:disabled { opacity: 0.5; cursor: not-allowed; }
-    #console-log { margin-top: 30px; width: 100%; max-width: 500px; background: #0b1120; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 0.8rem; color: #4ade80; white-space: pre-wrap; min-height: 200px; max-height: 400px; overflow-y: auto; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin:0; min-height:100vh; background:#05070d; color:#f8fafc; padding:18px 16px 78px; }
+    .wrap { width:min(100%, 620px); margin:0 auto; }
+    .brand { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+    .brand-mark { width:38px; height:38px; border:1px solid #38bdf8; border-radius:50%; display:grid; place-items:center; color:#38bdf8; font-weight:900; box-shadow:0 0 16px rgba(56,189,248,.2); }
+    h1 { margin:0; font-size:1.05rem; letter-spacing:.5px; }
+    .sub { margin:4px 0 0; color:#64748b; font-size:.76rem; }
+    .card { background:linear-gradient(180deg,#0b1120,#080d1a); border:1px solid #1e293b; border-radius:15px; padding:17px; margin-bottom:14px; box-shadow:0 12px 30px rgba(0,0,0,.28); }
+    .card.safe { border-color:rgba(56,189,248,.32); }
+    .card.live { border-color:rgba(74,222,128,.32); }
+    .card.manual { border-color:rgba(249,115,22,.34); }
+    .eyebrow { font-size:.6rem; font-weight:900; letter-spacing:1px; text-transform:uppercase; color:#64748b; margin-bottom:5px; }
+    h2 { margin:0 0 8px; font-size:.98rem; }
+    p { margin:0 0 14px; color:#94a3b8; font-size:.78rem; line-height:1.48; }
+    .warning { color:#fbbf24; font-size:.7rem; margin-bottom:12px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:11px; }
+    label { display:block; color:#94a3b8; font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
+    input, select { width:100%; background:#05070d; color:#f8fafc; border:1px solid #1e293b; border-radius:9px; padding:11px; outline:none; font-size:.85rem; }
+    input:focus, select:focus { border-color:#38bdf8; }
+    button { width:100%; border:0; border-radius:10px; padding:13px 14px; font-size:.78rem; font-weight:900; letter-spacing:.55px; text-transform:uppercase; cursor:pointer; touch-action:manipulation; }
+    button:disabled { opacity:.48; cursor:not-allowed; }
+    .blue { background:#38bdf8; color:#020617; }
+    .green { background:#4ade80; color:#052e16; }
+    .orange { background:#f97316; color:#fff; }
+    .status-row { display:flex; justify-content:space-between; gap:10px; margin-top:12px; color:#64748b; font-size:.67rem; }
+    #console-log { background:#020617; border:1px solid #172033; color:#4ade80; border-radius:12px; padding:13px; min-height:165px; max-height:290px; overflow:auto; white-space:pre-wrap; word-break:break-word; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.69rem; line-height:1.45; }
+    .footer { position:fixed; left:0; right:0; bottom:0; background:rgba(5,7,13,.96); border-top:1px solid rgba(56,189,248,.12); color:#475569; text-align:center; padding:8px 10px max(8px,env(safe-area-inset-bottom)); font-size:.58rem; font-weight:700; letter-spacing:.25px; backdrop-filter:blur(8px); }
+    @media (max-width:430px) { .grid { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
+  <main class="wrap">
+    <div class="brand">
+      <div class="brand-mark">GL</div>
+      <div><h1>GhostLane™ Cloud Mesh Utility</h1><div class="sub">Safe correction + live mapped-node ingestion</div></div>
+    </div>
 
-  <h2>Cloud Mesh Importer V2</h2>
-  <p>This utility will clean up coordinate placement and snap all nodes strictly to public roadways.</p>
-  
-  <button class="btn-import" onclick="startImport()" id="import-btn">Apply Roadway Correction</button>
+    <section class="card safe">
+      <div class="eyebrow">Database-safe</div>
+      <h2>Roadway Correction</h2>
+      <p>Checks every existing camera against nearby OpenStreetMap roadway geometry. A node is moved only when a roadway is found within the safety threshold; otherwise its current coordinates are preserved.</p>
+      <div class="warning">No database wipe. No hard-coded replacement list. Existing nodes stay intact unless a safe roadway correction is found.</div>
+      <div class="grid">
+        <div><label for="snap-distance">Maximum correction distance</label><select id="snap-distance"><option value="35">35 meters — strict</option><option value="50" selected>50 meters — recommended</option><option value="70">70 meters — broad</option></select></div>
+        <div><label for="road-search">Road search radius</label><select id="road-search"><option value="75">75 meters</option><option value="100" selected>100 meters</option><option value="150">150 meters</option></select></div>
+      </div>
+      <button class="blue" id="correct-btn" onclick="correctExistingNodes()">Correct Existing Node Locations</button>
+      <div class="status-row"><span id="correction-status">Ready</span><span id="db-count">Database: -- nodes</span></div>
+    </section>
 
-  <div id="console-log">System Ready... Waiting to realign coordinates.</div>
+    <section class="card live">
+      <div class="eyebrow">Current public map data</div>
+      <h2>Live Camera Node Adder</h2>
+      <p>Uses your current GPS position to scan the latest camera and surveillance nodes available through OpenStreetMap/Overpass, skips IDs already in GhostLane, and adds only new discoveries.</p>
+      <div class="grid">
+        <div><label for="scan-radius">Scan radius</label><select id="scan-radius"><option value="5">5 miles</option><option value="10" selected>10 miles</option><option value="25">25 miles</option><option value="50">50 miles</option></select></div>
+        <div><label>GPS mode</label><input value="High accuracy" disabled></div>
+      </div>
+      <button class="green" id="scan-btn" onclick="scanAndAddLiveNodes()">Scan & Add Live Nodes Near Me</button>
+      <div class="status-row"><span id="scan-status">Waiting for scan</span><span id="gps-status">GPS: --</span></div>
+    </section>
+
+    <section class="card manual">
+      <div class="eyebrow">Field reporting</div>
+      <h2>Add Camera At My Current Location</h2>
+      <p>For a camera you physically see that is missing from the public mesh. GhostLane records your high-accuracy GPS position directly in Supabase.</p>
+      <div class="grid">
+        <div><label for="manual-label">Camera / operator label</label><input id="manual-label" placeholder="Flock Safety, ALPR, traffic camera..."></div>
+        <div><label for="manual-heading">Camera heading (0–359°)</label><input id="manual-heading" type="number" min="0" max="359" inputmode="numeric" placeholder="Optional"></div>
+      </div>
+      <button class="orange" id="manual-btn" onclick="addCameraAtCurrentLocation()">Add Current Location Node</button>
+    </section>
+
+    <section class="card">
+      <div class="eyebrow">Operation log</div>
+      <div id="console-log">[READY] GhostLane mesh utility initialized.</div>
+    </section>
+  </main>
+
+  <footer class="footer">GhostLane™ • Cactus🌵Byte Studios™ • All Rights Reserved</footer>
 
   <script>
     const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
-    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const OVERPASS_ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://lz4.overpass-api.de/api/interpreter'
+    ];
 
-    const logConsole = document.getElementById('console-log');
-    const importBtn = document.getElementById('import-btn');
+    const logBox = document.getElementById('console-log');
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-    function printLog(message) {
-      logConsole.innerText += `\n[>>] ${message}`;
-      logConsole.scrollTop = logConsole.scrollHeight;
+    function log(message, type='INFO') {
+      const time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      logBox.textContent += `\n[${time}] [${type}] ${message}`;
+      logBox.scrollTop = logBox.scrollHeight;
     }
 
-    async function startImport() {
-      importBtn.disabled = true;
-      printLog("Flushing old layout data...");
+    function setBusy(button, busy, textBusy, textReady) {
+      button.disabled = busy;
+      button.textContent = busy ? textBusy : textReady;
+    }
 
-      const { error: deleteError } = await _supabase.from('cameras').delete().neq('id', 0);
-      if (deleteError) {
-        printLog(`Notice: ${deleteError.message}`);
-      }
-
-      // Strictly roadside and intersection coordinates across OKC, Edmond, Norman, Tulsa
-      const nodes = [
-        { id: 99401, lat: 35.4675, lng: -97.5164, heading: 0, operator: 'OKC PD ALPR' },
-        { id: 99402, lat: 35.4800, lng: -97.5200, heading: 90, operator: 'Flock Safety' },
-        { id: 99403, lat: 35.4600, lng: -97.5300, heading: 180, operator: 'OKC PD ALPR' },
-        { id: 99404, lat: 35.4900, lng: -97.5400, heading: 270, operator: 'Flock Safety' },
-        { id: 99405, lat: 35.4950, lng: -97.5000, heading: 45, operator: 'OKC PD ALPR' },
-        { id: 99406, lat: 35.4500, lng: -97.4900, heading: 135, operator: 'Flock Safety' },
-        { id: 99407, lat: 35.4400, lng: -97.5500, heading: 225, operator: 'OKC PD ALPR' },
-        { id: 99408, lat: 35.5100, lng: -97.5700, heading: 315, operator: 'Flock Safety' },
-        { id: 99409, lat: 35.5200, lng: -97.5500, heading: 0, operator: 'OKC PD ALPR' },
-        { id: 99410, lat: 35.5350, lng: -97.5400, heading: 90, operator: 'Flock Safety' },
-        { id: 99411, lat: 35.4100, lng: -97.5000, heading: 180, operator: 'OKC PD ALPR' },
-        { id: 99412, lat: 35.3850, lng: -97.5000, heading: 270, operator: 'Flock Safety' },
-        { id: 99413, lat: 35.4750, lng: -97.6000, heading: 45, operator: 'OKC PD ALPR' },
-        { id: 99414, lat: 35.4850, lng: -97.6200, heading: 135, operator: 'Flock Safety' },
-        { id: 99415, lat: 36.1539, lng: -95.9928, heading: 0, operator: 'Tulsa PD ALPR' },
-        { id: 99416, lat: 36.1400, lng: -95.9800, heading: 90, operator: 'Flock Safety' },
-        { id: 99417, lat: 36.1600, lng: -96.0100, heading: 180, operator: 'Tulsa PD ALPR' },
-        { id: 99418, lat: 35.2220, lng: -97.4390, heading: 90, operator: 'Norman PD ALPR' }
-      ];
-
-      printLog(`Loaded ${nodes.length} roadway-aligned nodes.`);
-      
-      const insertData = nodes.map(n => ({
-        lat: Number(n.lat),
-        lng: Number(n.lng),
-        node_id: String(`DEFLOCK-${n.id}`),
-        heading: Number(n.heading),
-        label: String(n.operator)
-      }));
-
-      printLog("Injecting roadway-corrected matrix into Supabase...");
-
-      try {
-        const { error } = await _supabase.from('cameras').insert(insertData);
-        
-        if (error) {
-          printLog(`ERROR: ${error.message}`);
-          importBtn.disabled = false;
-        } else {
-          printLog(`SUCCESS: All ${insertData.length} cameras snapped to roadways!`);
-          printLog("MAPPING ALIGNMENT COMPLETE.");
+    async function fetchOverpass(query) {
+      let lastError = null;
+      for (const endpoint of OVERPASS_ENDPOINTS) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 35000);
+          const url = `${endpoint}?data=${encodeURIComponent(query)}`;
+          const res = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } catch (err) {
+          lastError = err;
+          log(`Overpass endpoint failed; trying fallback (${err.message}).`, 'NOTICE');
         }
+      }
+      throw lastError || new Error('All Overpass endpoints failed.');
+    }
+
+    function getGPS() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) return reject(new Error('Geolocation is not supported on this device.'));
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+          err => reject(new Error(err.message || 'Unable to get GPS location.')),
+          { enableHighAccuracy:true, timeout:18000, maximumAge:0 }
+        );
+      });
+    }
+
+    function metersPerDegree(lat) {
+      return { y:111320, x:111320 * Math.cos(lat * Math.PI / 180) };
+    }
+
+    function nearestPointOnSegment(p, a, b, originLat) {
+      const m = metersPerDegree(originLat);
+      const ax=(a.lng-p.lng)*m.x, ay=(a.lat-p.lat)*m.y;
+      const bx=(b.lng-p.lng)*m.x, by=(b.lat-p.lat)*m.y;
+      const dx=bx-ax, dy=by-ay;
+      const denom=dx*dx+dy*dy;
+      let t=denom ? -(ax*dx+ay*dy)/denom : 0;
+      t=Math.max(0,Math.min(1,t));
+      const x=ax+t*dx, y=ay+t*dy;
+      return {
+        distance:Math.hypot(x,y),
+        lat:p.lat + y/m.y,
+        lng:p.lng + x/m.x
+      };
+    }
+
+    function nearestRoadPoint(lat, lng, elements) {
+      const p={lat:Number(lat),lng:Number(lng)};
+      let best=null;
+      for (const el of elements || []) {
+        const g=el.geometry;
+        if (!Array.isArray(g) || g.length < 2) continue;
+        for (let i=0;i<g.length-1;i++) {
+          const q=nearestPointOnSegment(p, {lat:g[i].lat,lng:g[i].lon}, {lat:g[i+1].lat,lng:g[i+1].lon}, p.lat);
+          if (!best || q.distance < best.distance) best=q;
+        }
+      }
+      return best;
+    }
+
+    async function refreshCount() {
+      try {
+        const { count, error } = await db.from('cameras').select('*', { count:'exact', head:true });
+        if (!error) document.getElementById('db-count').textContent = `Database: ${count ?? '--'} nodes`;
+      } catch (_) {}
+    }
+
+    async function correctExistingNodes() {
+      const btn=document.getElementById('correct-btn');
+      const status=document.getElementById('correction-status');
+      setBusy(btn,true,'Correction Running…','Correct Existing Node Locations');
+      status.textContent='Loading nodes…';
+      let corrected=0, skipped=0, failed=0;
+      try {
+        const { data:nodes, error } = await db.from('cameras').select('id,node_id,lat,lng,heading,label').limit(5000);
+        if (error) throw error;
+        if (!nodes?.length) { log('No camera nodes found in Supabase.', 'NOTICE'); return; }
+        const maxDistance=Number(document.getElementById('snap-distance').value);
+        const searchRadius=Number(document.getElementById('road-search').value);
+        log(`Starting safe roadway correction for ${nodes.length} nodes. Nothing will be deleted.`);
+
+        for (let i=0;i<nodes.length;i++) {
+          const node=nodes[i];
+          status.textContent=`Checking ${i+1} / ${nodes.length}`;
+          if (!Number.isFinite(Number(node.lat)) || !Number.isFinite(Number(node.lng))) { skipped++; continue; }
+          try {
+            const query=`[out:json][timeout:20];way["highway"](around:${searchRadius},${Number(node.lat)},${Number(node.lng)});out geom;`;
+            const roadData=await fetchOverpass(query);
+            const nearest=nearestRoadPoint(node.lat,node.lng,roadData.elements);
+            if (!nearest || nearest.distance > maxDistance) {
+              skipped++;
+            } else if (nearest.distance < 1.25) {
+              skipped++;
+            } else {
+              const { error:updateError } = await db.from('cameras').update({ lat:Number(nearest.lat.toFixed(7)), lng:Number(nearest.lng.toFixed(7)) }).eq('id',node.id);
+              if (updateError) throw updateError;
+              corrected++;
+              log(`${node.node_id || node.id}: moved ${nearest.distance.toFixed(1)}m to nearest roadway.`);
+            }
+          } catch (err) {
+            failed++;
+            log(`${node.node_id || node.id}: skipped after error — ${err.message}`, 'NOTICE');
+          }
+          await sleep(350);
+        }
+        status.textContent=`${corrected} corrected • ${skipped} unchanged • ${failed} failed`;
+        log(`Correction complete: ${corrected} corrected, ${skipped} preserved unchanged, ${failed} failed.`, 'DONE');
       } catch (err) {
-        printLog(`CRITICAL ERROR: ${err.message}`);
-        importBtn.disabled = false;
+        status.textContent='Correction failed';
+        log(`Roadway correction stopped: ${err.message}`, 'ERROR');
+      } finally {
+        setBusy(btn,false,'','Correct Existing Node Locations');
+        refreshCount();
       }
     }
+
+    function parseHeading(value) {
+      if (value == null || value === '') return 0;
+      const numeric=parseFloat(value);
+      if (Number.isFinite(numeric)) return ((numeric%360)+360)%360;
+      const key=String(value).trim().toUpperCase().split(';')[0];
+      const map={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
+      return map[key] ?? 0;
+    }
+
+    function cameraCoords(el) {
+      if (Number.isFinite(el.lat) && Number.isFinite(el.lon)) return {lat:el.lat,lng:el.lon};
+      if (el.center && Number.isFinite(el.center.lat) && Number.isFinite(el.center.lon)) return {lat:el.center.lat,lng:el.center.lon};
+      return null;
+    }
+
+    async function scanAndAddLiveNodes() {
+      const btn=document.getElementById('scan-btn');
+      const status=document.getElementById('scan-status');
+      setBusy(btn,true,'Scanning Live Mesh…','Scan & Add Live Nodes Near Me');
+      status.textContent='Getting GPS…';
+      try {
+        const gps=await getGPS();
+        document.getElementById('gps-status').textContent=`GPS: ±${Math.round(gps.accuracy)}m`;
+        const miles=Number(document.getElementById('scan-radius').value);
+        const radius=Math.round(miles*1609.344);
+        log(`GPS locked. Scanning ${miles} miles around ${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}.`);
+        const query=`[out:json][timeout:35];(nwr["man_made"="surveillance"](around:${radius},${gps.lat},${gps.lng});nwr["highway"="speed_camera"](around:${radius},${gps.lat},${gps.lng}););out center tags;`;
+        status.textContent='Querying public camera mesh…';
+        const result=await fetchOverpass(query);
+        const candidates=(result.elements || []).map(el => {
+          const c=cameraCoords(el); if (!c) return null;
+          const tags=el.tags || {};
+          const isSpeed=tags.highway==='speed_camera';
+          return {
+            lat:Number(c.lat), lng:Number(c.lng),
+            node_id:`OSM-${el.type}-${el.id}`,
+            heading:parseHeading(tags.direction),
+            label:String(tags.operator || tags.name || (isSpeed ? 'Speed Camera' : 'Surveillance Camera')).slice(0,180)
+          };
+        }).filter(Boolean);
+        log(`Public mesh returned ${candidates.length} mapped camera candidates.`);
+
+        const { data:existing, error:existingError } = await db.from('cameras').select('node_id').limit(5000);
+        if (existingError) throw existingError;
+        const known=new Set((existing || []).map(x=>x.node_id).filter(Boolean));
+        const unique=candidates.filter(x=>!known.has(x.node_id));
+        if (!unique.length) {
+          status.textContent='No new nodes found';
+          log('Scan complete. Every returned node is already in GhostLane.', 'DONE');
+          return;
+        }
+
+        let added=0;
+        for (let i=0;i<unique.length;i+=250) {
+          const chunk=unique.slice(i,i+250);
+          const { error:insertError } = await db.from('cameras').insert(chunk);
+          if (insertError) throw insertError;
+          added += chunk.length;
+        }
+        status.textContent=`${added} new nodes added`;
+        log(`Live mesh scan complete: ${added} new public mapped camera nodes added; ${candidates.length-added} duplicates skipped.`, 'DONE');
+      } catch (err) {
+        status.textContent='Scan failed';
+        document.getElementById('gps-status').textContent='GPS: error';
+        log(`Live node scan failed: ${err.message}`, 'ERROR');
+      } finally {
+        setBusy(btn,false,'','Scan & Add Live Nodes Near Me');
+        refreshCount();
+      }
+    }
+
+    async function addCameraAtCurrentLocation() {
+      const btn=document.getElementById('manual-btn');
+      setBusy(btn,true,'Getting GPS…','Add Current Location Node');
+      try {
+        const gps=await getGPS();
+        const label=document.getElementById('manual-label').value.trim() || 'User Reported Camera';
+        const heading=parseHeading(document.getElementById('manual-heading').value);
+        const row={
+          lat:Number(gps.lat.toFixed(7)),
+          lng:Number(gps.lng.toFixed(7)),
+          node_id:`USER-${Date.now()}`,
+          heading,
+          label:String(label).slice(0,180)
+        };
+        const { error } = await db.from('cameras').insert([row]);
+        if (error) throw error;
+        log(`Field node added at current GPS location (±${Math.round(gps.accuracy)}m): ${row.label}.`, 'DONE');
+        document.getElementById('manual-label').value='';
+        document.getElementById('manual-heading').value='';
+      } catch (err) {
+        log(`Could not add current-location node: ${err.message}`, 'ERROR');
+      } finally {
+        setBusy(btn,false,'','Add Current Location Node');
+        refreshCount();
+      }
+    }
+
+    refreshCount();
   </script>
 </body>
 </html>

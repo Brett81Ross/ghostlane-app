@@ -15,9 +15,6 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Supabase JS Client SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     * {
       box-sizing: border-box;
@@ -292,7 +289,6 @@
     .custom-cone-icon {
       background: transparent !important;
       border: none !important;
-      overflow: visible !important;
     }
 
     .user-arrow-puck {
@@ -477,11 +473,6 @@
   </nav>
 
   <script>
-    // Supabase Cloud Configuration
-    const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
-    const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-
     // Audio Context for Radar Pings
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playPing(freq = 920, type = 'sine', duration = 0.1) {
@@ -549,9 +540,9 @@
     // Directional SVG Cone HTML
     function getConeHtml(heading) {
       return `
-        <div style="width: 60px; height: 60px; transform: rotate(${heading}deg); transform-origin: center; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-          <svg width="60" height="60" viewBox="0 0 60 60" style="overflow: visible;">
-            <polygon points="30,30 15,4 45,4" fill="rgba(239, 68, 68, 0.35)" stroke="#ef4444" stroke-width="1.5" />
+        <div style="width:60px;height:60px;transform:rotate(${heading}deg);transform-origin:30px 30px;display:flex;align-items:center;justify-content:center;">
+          <svg width="60" height="60" viewBox="0 0 60 60">
+            <polygon points="30,30 14,4 46,4" fill="rgba(239, 68, 68, 0.35)" stroke="#ef4444" stroke-width="1.5" />
             <circle cx="30" cy="30" r="5" fill="#ffffff" stroke="#ef4444" stroke-width="2" />
           </svg>
         </div>
@@ -559,7 +550,7 @@
     }
 
     // 134 Deterministic Base Cameras
-    let cameraLocations = [];
+    const cameraLocations = [];
     const basePoints = [
       { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
       { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
@@ -593,6 +584,10 @@
       }
     });
 
+    // Load any user-logged custom nodes
+    const savedNodes = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
+    savedNodes.forEach(n => cameraLocations.push(n));
+
     const cameraLayerGroup = L.layerGroup().addTo(map);
 
     function renderCameras() {
@@ -600,40 +595,20 @@
       cameraLocations.forEach(cam => {
         const icon = L.divIcon({
           className: 'custom-cone-icon',
-          html: getConeHtml(cam.heading || 0),
+          html: getConeHtml(cam.heading),
           iconSize: [60, 60],
           iconAnchor: [30, 30],
           popupAnchor: [0, -15]
         });
 
         L.marker([cam.lat, cam.lng], { icon: icon })
-         .bindPopup(`<b>${cam.node_id || cam.id}</b><br><span style="color:#ef4444;font-weight:bold;">${cam.label || 'Optical Trap'}</span>`)
+         .bindPopup(`<b>${cam.id}</b><br><span style="color:#ef4444;font-weight:bold;">${cam.label} Optical Trap</span>`)
          .addTo(cameraLayerGroup);
       });
       document.getElementById('stat-cameras').innerText = cameraLocations.length;
     }
 
-    // Render 134 base cameras immediately
     renderCameras();
-
-    // Sync cloud nodes from Supabase in background
-    async function syncCloudMesh() {
-      if (!_supabase) return;
-      try {
-        const { data, error } = await _supabase.from('cameras').select('*');
-        if (!error && data && data.length > 0) {
-          data.forEach(dbCam => {
-            if (!cameraLocations.some(c => c.lat === dbCam.lat && c.lng === dbCam.lng)) {
-              cameraLocations.push(dbCam);
-            }
-          });
-          renderCameras();
-        }
-      } catch (err) {
-        console.warn("Supabase background sync:", err);
-      }
-    }
-    syncCloudMesh();
 
     // Shadow Route Search Modal Logic
     function openSearch() {
@@ -798,37 +773,25 @@
       }
     }
 
-    // Manual Node Logging & Realtime Supabase Cloud Push
-    map.on('click', async function(e) {
+    // Manual Node Logging
+    map.on('click', function(e) {
       if (logNodeMode) {
         const newNode = {
           lat: e.latlng.lat,
           lng: e.latlng.lng,
-          node_id: `MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
+          id: `MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
           heading: 0,
           label: 'Northbound'
         };
 
-        // Instantly render on screen
         cameraLocations.push(newNode);
+        const stored = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
+        stored.push(newNode);
+        localStorage.setItem('gl_manual_nodes', JSON.stringify(stored));
+
         renderCameras();
         playPing(800, 'square', 0.12);
         alert("Optical node logged to mesh!");
-
-        // Broadcast to Supabase
-        if (_supabase) {
-          try {
-            await _supabase.from('cameras').insert([{
-              lat: newNode.lat,
-              lng: newNode.lng,
-              node_id: newNode.node_id,
-              heading: newNode.heading,
-              label: newNode.label
-            }]);
-          } catch (err) {
-            console.error("Supabase insert error:", err);
-          }
-        }
       }
     });
   </script>

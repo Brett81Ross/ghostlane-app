@@ -40,38 +40,20 @@
 
     async function startImport() {
       importBtn.disabled = true;
-      printLog("Connecting to OpenStreetMap/DeFlock API...");
+      printLog("Bypassing browser blocks via secure bridge...");
 
-      // Bounding Box for Oklahoma: (Min Lat, Min Lng, Max Lat, Max Lng)
       const query = `[out:json][timeout:30];node["man_made"="surveillance"]["surveillance:type"~"ALPR|automatic_number_plate_recognition"](33.5,-100.0,37.0,-94.0);out body;`;
-      
-      let response;
-      let data;
+      const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+      const bridgeUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(overpassUrl)}`;
 
       try {
-        // Attempt Primary Server with POST method to bypass CORS and URL length limits
-        try {
-          response = await fetch("https://overpass-api.de/api/interpreter", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: "data=" + encodeURIComponent(query)
-          });
-          if (!response.ok) throw new Error("Primary server rejected request.");
-        } catch (primaryErr) {
-          printLog("Primary server failed, routing to backup server...");
-          // Fallback to secondary server
-          response = await fetch("https://overpass.kumi.systems/api/interpreter", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: "data=" + encodeURIComponent(query)
-          });
-          if (!response.ok) throw new Error("Backup server rejected request.");
-        }
-
-        data = await response.json();
+        const response = await fetch(bridgeUrl);
+        if (!response.ok) throw new Error("Bridge connection failed.");
+        
+        const data = await response.json();
         const nodes = data.elements || [];
         
-        printLog(`SUCCESS: Located ${nodes.length} real ALPR cameras in the target sector.`);
+        printLog(`SUCCESS: Located ${nodes.length} real ALPR cameras.`);
 
         if (nodes.length === 0) {
           printLog("No cameras found. Terminating protocol.");
@@ -79,7 +61,7 @@
           return;
         }
 
-        printLog("Formatting target data for GhostLane Cloud Mesh...");
+        printLog("Formatting target data for Cloud Mesh...");
         
         const insertData = nodes.map(n => ({
           lat: n.lat,
@@ -94,14 +76,13 @@
         let successCount = 0;
         for (let i = 0; i < insertData.length; i += 50) {
           const batch = insertData.slice(i, i + 50);
-          
           const { error } = await _supabase.from('cameras').insert(batch);
           
           if (error) {
             printLog(`ERROR on batch: ${error.message}`);
           } else {
             successCount += batch.length;
-            printLog(`Pushing... ${successCount} nodes secured in Cloud Mesh.`);
+            printLog(`Pushing... ${successCount} nodes secured.`);
           }
         }
 

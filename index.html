@@ -15,6 +15,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+  <!-- Supabase JS Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     * {
       box-sizing: border-box;
@@ -52,7 +55,8 @@
       width: 38px;
       height: 38px;
       border-radius: 50%;
-      object-fit: cover;
+      object-fit: contain; /* Shrunk to fit perfectly */
+      padding: 2px; /* Keeps text off the absolute edge */
       border: 1.5px solid #38bdf8;
       box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
       background: #0b1120;
@@ -503,6 +507,11 @@
       synth.speak(utterance);
     }
 
+    // Supabase Initialization (Safe)
+    const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
+    const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
     // State Variables
     let userCoords = [35.4676, -97.5164];
     let isRadarActive = false;
@@ -549,8 +558,8 @@
       `;
     }
 
-    // 134 Deterministic Base Cameras
-    const cameraLocations = [];
+    // 134 Deterministic Base Cameras (Guaranteed to load)
+    let cameraLocations = [];
     const basePoints = [
       { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
       { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
@@ -584,9 +593,11 @@
       }
     });
 
-    // Load any user-logged custom nodes
-    const savedNodes = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
-    savedNodes.forEach(n => cameraLocations.push(n));
+    // Safely load any manually saved nodes from browser memory as a backup
+    try {
+      const savedNodes = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
+      savedNodes.forEach(n => cameraLocations.push(n));
+    } catch(e) { console.warn("Local storage check bypassed"); }
 
     const cameraLayerGroup = L.layerGroup().addTo(map);
 
@@ -595,20 +606,44 @@
       cameraLocations.forEach(cam => {
         const icon = L.divIcon({
           className: 'custom-cone-icon',
-          html: getConeHtml(cam.heading),
+          html: getConeHtml(cam.heading || 0),
           iconSize: [60, 60],
           iconAnchor: [30, 30],
           popupAnchor: [0, -15]
         });
 
         L.marker([cam.lat, cam.lng], { icon: icon })
-         .bindPopup(`<b>${cam.id}</b><br><span style="color:#ef4444;font-weight:bold;">${cam.label} Optical Trap</span>`)
+         .bindPopup(`<b>${cam.node_id || cam.id}</b><br><span style="color:#ef4444;font-weight:bold;">${cam.label || 'Optical Trap'}</span>`)
          .addTo(cameraLayerGroup);
       });
       document.getElementById('stat-cameras').innerText = cameraLocations.length;
     }
 
+    // Instantly draw the local cameras so you never see a blank map
     renderCameras();
+
+    // Background Task: Silently fetch community nodes from Supabase
+    async function syncCloudCameras() {
+      if (!_supabase) return;
+      try {
+        const { data, error } = await _supabase.from('cameras').select('*');
+        if (!error && data && data.length > 0) {
+          let updated = false;
+          data.forEach(dbCam => {
+            // Only add if it's not already on the map
+            if (!cameraLocations.some(c => c.lat === dbCam.lat && c.lng === dbCam.lng)) {
+              cameraLocations.push(dbCam);
+              updated = true;
+            }
+          });
+          if (updated) renderCameras(); // Redraw with the new community nodes
+        }
+      } catch (err) {
+        // If it fails, the app ignores it and keeps working
+        console.warn("Background sync ignored:", err);
+      }
+    }
+    syncCloudCameras();
 
     // Shadow Route Search Modal Logic
     function openSearch() {
@@ -773,25 +808,43 @@
       }
     }
 
-    // Manual Node Logging
-    map.on('click', function(e) {
+    // Manual Node Logging with Background Cloud Push
+    map.on('click', async function(e) {
       if (logNodeMode) {
         const newNode = {
           lat: e.latlng.lat,
           lng: e.latlng.lng,
           id: `MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
           heading: 0,
-          label: 'Northbound'
+          label: 'User Logged Trap'
         };
 
+        // Draw instantly and save locally
         cameraLocations.push(newNode);
-        const stored = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
-        stored.push(newNode);
-        localStorage.setItem('gl_manual_nodes', JSON.stringify(stored));
+        try {
+          const stored = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
+          stored.push(newNode);
+          localStorage.setItem('gl_manual_nodes', JSON.stringify(stored));
+        } catch(err) {}
 
         renderCameras();
         playPing(800, 'square', 0.12);
         alert("Optical node logged to mesh!");
+
+        // Push to Supabase quietly in the background
+        if (_supabase) {
+          try {
+            await _supabase.from('cameras').insert([{
+              lat: newNode.lat,
+              lng: newNode.lng,
+              node_id: newNode.id,
+              heading: newNode.heading,
+              label: newNode.label
+            }]);
+          } catch (err) {
+            console.warn("Cloud push ignored:", err);
+          }
+        }
       }
     });
   </script>

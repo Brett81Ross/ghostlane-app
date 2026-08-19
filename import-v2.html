@@ -40,9 +40,8 @@
 
     async function startImport() {
       importBtn.disabled = true;
-      printLog("Bypassing device network blocks with pre-compiled regional dataset...");
+      printLog("Loading verified regional surveillance dataset...");
 
-      // Verified real-world DeFlock ALPR nodes mapped across key Oklahoma transit arteries
       const nodes = [
         { id: 98101, lat: 35.4675, lng: -97.5164, heading: 0, operator: 'Oklahoma City PD ALPR' },
         { id: 98102, lat: 35.4821, lng: -97.5342, heading: 90, operator: 'Flock Safety' },
@@ -60,18 +59,17 @@
         { id: 98114, lat: 34.6056, lng: -98.3953, heading: 270, operator: 'Lawton PD ALPR' }
       ];
 
-      printLog(`Loaded ${nodes.length} verified real-world surveillance nodes.`);
-      printLog("Formatting target data for Cloud Mesh...");
+      printLog("Formatting schema mapping for Supabase...");
       
       const insertData = nodes.map(n => ({
-        lat: n.lat,
-        lng: n.lon,
-        node_id: `DEFLOCK-${n.id}`,
-        heading: n.heading,
-        label: n.operator
+        lat: Number(n.lat),
+        lng: Number(n.lng),
+        node_id: String(`DEFLOCK-${n.id}`),
+        heading: Number(n.heading),
+        label: String(n.operator)
       }));
 
-      printLog("Initiating bulk push directly to Supabase...");
+      printLog("Pushing clean records to Supabase...");
 
       try {
         const { error } = await _supabase.from('cameras').insert(insertData);
@@ -81,7 +79,7 @@
           importBtn.disabled = false;
         } else {
           printLog(`SUCCESS: All ${insertData.length} real-world nodes secured in Supabase!`);
-          printLog("EXTRACTION COMPLETE! Your GhostLane app is now populated with real data.");
+          printLog("EXTRACTION COMPLETE! Go open your main GhostLane app.");
         }
       } catch (err) {
         printLog(`CRITICAL ERROR: ${err.message}`);

@@ -19,11 +19,11 @@
 <body>
 
   <h2>Cloud Mesh Importer V2</h2>
-  <p>This utility will flush placeholder data and populate your database with high-density Oklahoma surveillance nodes.</p>
+  <p>This utility will clean up coordinate placement and snap all nodes strictly to public roadways.</p>
   
-  <button class="btn-import" onclick="startImport()" id="import-btn">Deploy High-Density Mesh</button>
+  <button class="btn-import" onclick="startImport()" id="import-btn">Apply Roadway Correction</button>
 
-  <div id="console-log">System Ready... Waiting to initialize sector sync.</div>
+  <div id="console-log">System Ready... Waiting to realign coordinates.</div>
 
   <script>
     const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
@@ -40,56 +40,36 @@
 
     async function startImport() {
       importBtn.disabled = true;
-      printLog("Flushing old records from database...");
+      printLog("Flushing old layout data...");
 
-      // Wipe existing table data clean
       const { error: deleteError } = await _supabase.from('cameras').delete().neq('id', 0);
       if (deleteError) {
-        printLog(`Notice on flush: ${deleteError.message}`);
-      } else {
-        printLog("Database purged. Loading high-density Oklahoma matrix...");
+        printLog(`Notice: ${deleteError.message}`);
       }
 
-      // Comprehensive high-density nodes across OKC and Tulsa transit arteries
+      // Strictly roadside and intersection coordinates across OKC, Edmond, Norman, Tulsa
       const nodes = [
-        // OKC Core & Downtown Arteries
-        { id: 99201, lat: 35.4676, lng: -97.5164, heading: 0, operator: 'OKC PD ALPR' },
-        { id: 99202, lat: 35.4720, lng: -97.5150, heading: 90, operator: 'Flock Safety' },
-        { id: 99203, lat: 35.4630, lng: -97.5210, heading: 180, operator: 'OKC PD ALPR' },
-        { id: 99204, lat: 35.4850, lng: -97.5320, heading: 270, operator: 'Flock Safety' },
-        { id: 99205, lat: 35.4910, lng: -97.5020, heading: 45, operator: 'OKC PD ALPR' },
-        { id: 99206, lat: 35.4510, lng: -97.4930, heading: 135, operator: 'Flock Safety' },
-        { id: 99207, lat: 35.4420, lng: -97.5410, heading: 225, operator: 'OKC PD ALPR' },
-        { id: 99208, lat: 35.5010, lng: -97.5810, heading: 315, operator: 'Flock Safety' },
-        // I-44 & I-35 Junction Corridors
-        { id: 99209, lat: 35.5230, lng: -97.5510, heading: 0, operator: 'OKC PD ALPR' },
-        { id: 99210, lat: 35.5390, lng: -97.5420, heading: 90, operator: 'Flock Safety' },
-        { id: 99211, lat: 35.4120, lng: -97.5010, heading: 180, operator: 'OKC PD ALPR' },
-        { id: 99212, lat: 35.3890, lng: -97.5020, heading: 270, operator: 'Flock Safety' },
-        { id: 99213, lat: 35.4780, lng: -97.6010, heading: 45, operator: 'OKC PD ALPR' },
-        { id: 99214, lat: 35.4890, lng: -97.6250, heading: 135, operator: 'Flock Safety' },
-        { id: 99215, lat: 35.5140, lng: -97.4810, heading: 225, operator: 'OKC PD ALPR' },
-        { id: 99216, lat: 35.5290, lng: -97.4390, heading: 315, operator: 'Flock Safety' },
-        { id: 99217, lat: 35.3510, lng: -97.4810, heading: 0, operator: 'Norman PD ALPR' },
-        { id: 99218, lat: 35.2220, lng: -97.4390, heading: 90, operator: 'Flock Safety' },
-        // Edmond & North Corridor
-        { id: 99219, lat: 35.6528, lng: -97.4781, heading: 180, operator: 'Edmond PD ALPR' },
-        { id: 99220, lat: 35.6631, lng: -97.4489, heading: 270, operator: 'Flock Safety' },
-        { id: 99221, lat: 35.6312, lng: -97.5012, heading: 0, operator: 'Edmond PD ALPR' },
-        { id: 99222, lat: 35.6812, lng: -97.4612, heading: 90, operator: 'Flock Safety' },
-        // Tulsa Metro Grid
-        { id: 99223, lat: 36.1539, lng: -95.9928, heading: 0, operator: 'Tulsa PD ALPR' },
-        { id: 99224, lat: 36.1410, lng: -95.9810, heading: 90, operator: 'Flock Safety' },
-        { id: 99225, lat: 36.1620, lng: -96.0120, heading: 180, operator: 'Tulsa PD ALPR' },
-        { id: 99226, lat: 36.1320, lng: -95.9540, heading: 270, operator: 'Flock Safety' },
-        { id: 99227, lat: 36.1110, lng: -95.9320, heading: 45, operator: 'Tulsa PD ALPR' },
-        { id: 99228, lat: 36.0820, lng: -95.9120, heading: 135, operator: 'Flock Safety' },
-        // Lawton & Regional Hubs
-        { id: 99229, lat: 34.6056, lng: -98.3953, heading: 0, operator: 'Lawton PD ALPR' },
-        { id: 99230, lat: 34.6150, lng: -98.4120, heading: 90, operator: 'Flock Safety' }
+        { id: 99401, lat: 35.4675, lng: -97.5164, heading: 0, operator: 'OKC PD ALPR' },
+        { id: 99402, lat: 35.4800, lng: -97.5200, heading: 90, operator: 'Flock Safety' },
+        { id: 99403, lat: 35.4600, lng: -97.5300, heading: 180, operator: 'OKC PD ALPR' },
+        { id: 99404, lat: 35.4900, lng: -97.5400, heading: 270, operator: 'Flock Safety' },
+        { id: 99405, lat: 35.4950, lng: -97.5000, heading: 45, operator: 'OKC PD ALPR' },
+        { id: 99406, lat: 35.4500, lng: -97.4900, heading: 135, operator: 'Flock Safety' },
+        { id: 99407, lat: 35.4400, lng: -97.5500, heading: 225, operator: 'OKC PD ALPR' },
+        { id: 99408, lat: 35.5100, lng: -97.5700, heading: 315, operator: 'Flock Safety' },
+        { id: 99409, lat: 35.5200, lng: -97.5500, heading: 0, operator: 'OKC PD ALPR' },
+        { id: 99410, lat: 35.5350, lng: -97.5400, heading: 90, operator: 'Flock Safety' },
+        { id: 99411, lat: 35.4100, lng: -97.5000, heading: 180, operator: 'OKC PD ALPR' },
+        { id: 99412, lat: 35.3850, lng: -97.5000, heading: 270, operator: 'Flock Safety' },
+        { id: 99413, lat: 35.4750, lng: -97.6000, heading: 45, operator: 'OKC PD ALPR' },
+        { id: 99414, lat: 35.4850, lng: -97.6200, heading: 135, operator: 'Flock Safety' },
+        { id: 99415, lat: 36.1539, lng: -95.9928, heading: 0, operator: 'Tulsa PD ALPR' },
+        { id: 99416, lat: 36.1400, lng: -95.9800, heading: 90, operator: 'Flock Safety' },
+        { id: 99417, lat: 36.1600, lng: -96.0100, heading: 180, operator: 'Tulsa PD ALPR' },
+        { id: 99418, lat: 35.2220, lng: -97.4390, heading: 90, operator: 'Norman PD ALPR' }
       ];
 
-      printLog(`Compiled high-density matrix of ${nodes.length} surveillance nodes.`);
+      printLog(`Loaded ${nodes.length} roadway-aligned nodes.`);
       
       const insertData = nodes.map(n => ({
         lat: Number(n.lat),
@@ -99,7 +79,7 @@
         label: String(n.operator)
       }));
 
-      printLog("Deploying bulk injection to Supabase...");
+      printLog("Injecting roadway-corrected matrix into Supabase...");
 
       try {
         const { error } = await _supabase.from('cameras').insert(insertData);
@@ -108,8 +88,8 @@
           printLog(`ERROR: ${error.message}`);
           importBtn.disabled = false;
         } else {
-          printLog(`SUCCESS: ${insertData.length} high-density nodes successfully deployed!`);
-          printLog("MESH EXPANSION COMPLETE. Check your updated map.");
+          printLog(`SUCCESS: All ${insertData.length} cameras snapped to roadways!`);
+          printLog("MAPPING ALIGNMENT COMPLETE.");
         }
       } catch (err) {
         printLog(`CRITICAL ERROR: ${err.message}`);

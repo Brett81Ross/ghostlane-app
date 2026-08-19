@@ -2,7 +2,7 @@
   "name": "GhostLane™",
   "short_name": "GhostLane",
   "description": "Zero-Trace Automotive Radar & Navigation",
-  "start_url": "/index.html",
+  "start_url": "/radar.html",
   "scope": "/",
   "display": "standalone",
   "background_color": "#06080e",

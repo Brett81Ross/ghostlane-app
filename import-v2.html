@@ -40,22 +40,16 @@
 
     async function startImport() {
       importBtn.disabled = true;
-      printLog("Initiating direct secure connection to OpenStreetMap server...");
+      printLog("Initiating standard GET request to bypass preflight checks...");
 
       const query = `[out:json][timeout:30];node["man_made"="surveillance"]["surveillance:type"~"ALPR|automatic_number_plate_recognition"](33.5,-103.0,37.0,-94.0);out body;`;
+      const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
 
       try {
-        const response = await fetch("https://overpass-api.de/api/interpreter", {
-          method: "POST",
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded"
-          },
-          body: "data=" + encodeURIComponent(query)
-        });
+        const response = await fetch(url);
 
         if (!response.ok) {
-           throw new Error("Overpass server rejected the direct request.");
+           throw new Error("Overpass server rejected the GET request.");
         }
 
         const data = await response.json();

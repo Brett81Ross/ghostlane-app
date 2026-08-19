@@ -2,17 +2,17 @@
   <defs>
     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <clipPath id="logoClip"><circle cx="360" cy="92" r="54"/></clipPath>
-    <clipPath id="qrLogoClip"><circle cx="360" cy="455" r="48"/></clipPath>
+    <clipPath id="qrLogoClip"><circle cx="360" cy="540" r="48"/></clipPath>
   </defs>
   <rect width="100%" height="100%" rx="36" fill="#06080e"/>
   <rect x="18" y="18" width="684" height="864" rx="30" fill="none" stroke="#38bdf8" stroke-opacity=".58" stroke-width="2"/>
   <circle cx="360" cy="92" r="62" fill="#0b1120" stroke="#38bdf8" stroke-width="3" filter="url(#glow)"/>
-  <image href="/logo-gl.png" x="306" y="38" width="108" height="108" preserveAspectRatio="xMidYMid slice" clip-path="url(#logoClip)"/>
+  <image href="/logo-gl.png" x="312" y="44" width="96" height="96" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoClip)"/>
   <text x="360" y="184" text-anchor="middle" font-family="Arial,sans-serif" font-size="32" font-weight="900" fill="#ffffff">GhostLane™</text>
   <text x="360" y="210" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="800" letter-spacing="2.4" fill="#38bdf8">SCAN • OPEN • INSTALL</text>
   <rect x="62" y="242" width="596" height="596" rx="28" fill="#0b1120" stroke="#38bdf8" stroke-opacity=".46" stroke-width="2"/>
   <image href="https://api.qrserver.com/v1/create-qr-code/?size=560x560&amp;data=https%3A%2F%2Fghostlane-app.vercel.app%2Fradar.html&amp;color=dff7ff&amp;bgcolor=0b1120&amp;margin=0" x="80" y="260" width="560" height="560"/>
-  <circle cx="360" cy="540" r="58" fill="#06080e" stroke="#38bdf8" stroke-width="5"/>
-  <image href="/logo-gl.png" x="312" y="492" width="96" height="96" preserveAspectRatio="xMidYMid slice" clip-path="url(#qrLogoClip)"/>
+  <circle cx="360" cy="540" r="60" fill="#06080e" stroke="#38bdf8" stroke-width="5"/>
+  <image href="/logo-gl.png" x="316" y="496" width="88" height="88" preserveAspectRatio="xMidYMid meet" clip-path="url(#qrLogoClip)"/>
   <text x="360" y="862" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" font-weight="900" fill="#f8fafc">GhostLane™ • Cactus🌵Byte Studios™ • All Rights Reserved</text>
 </svg>

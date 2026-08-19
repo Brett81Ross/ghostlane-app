@@ -55,8 +55,8 @@
       width: 38px;
       height: 38px;
       border-radius: 50%;
-      object-fit: contain; /* Shrunk to fit perfectly */
-      padding: 2px; /* Keeps text off the absolute edge */
+      object-fit: contain;
+      padding: 2px;
       border: 1.5px solid #38bdf8;
       box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
       background: #0b1120;
@@ -630,16 +630,14 @@
         if (!error && data && data.length > 0) {
           let updated = false;
           data.forEach(dbCam => {
-            // Only add if it's not already on the map
             if (!cameraLocations.some(c => c.lat === dbCam.lat && c.lng === dbCam.lng)) {
               cameraLocations.push(dbCam);
               updated = true;
             }
           });
-          if (updated) renderCameras(); // Redraw with the new community nodes
+          if (updated) renderCameras();
         }
       } catch (err) {
-        // If it fails, the app ignores it and keeps working
         console.warn("Background sync ignored:", err);
       }
     }
@@ -819,7 +817,6 @@
           label: 'User Logged Trap'
         };
 
-        // Draw instantly and save locally
         cameraLocations.push(newNode);
         try {
           const stored = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
@@ -831,7 +828,6 @@
         playPing(800, 'square', 0.12);
         alert("Optical node logged to mesh!");
 
-        // Push to Supabase quietly in the background
         if (_supabase) {
           try {
             await _supabase.from('cameras').insert([{

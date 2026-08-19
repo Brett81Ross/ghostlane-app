@@ -12,6 +12,7 @@
     p { color: #94a3b8; text-align: center; font-size: 0.9rem; margin-bottom: 30px; max-width: 400px; }
     .btn-import { background: #ef4444; color: #ffffff; border: none; padding: 16px 32px; border-radius: 12px; font-size: 1.1rem; font-weight: 900; text-transform: uppercase; cursor: pointer; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
     .btn-import:active { transform: scale(0.95); }
+    .btn-import:disabled { opacity: 0.5; cursor: not-allowed; }
     #console-log { margin-top: 30px; width: 100%; max-width: 500px; background: #0b1120; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 0.8rem; color: #4ade80; white-space: pre-wrap; min-height: 200px; max-height: 400px; overflow-y: auto; }
   </style>
 </head>
@@ -39,16 +40,35 @@
 
     async function startImport() {
       importBtn.disabled = true;
-      importBtn.style.opacity = "0.5";
       printLog("Connecting to OpenStreetMap/DeFlock API...");
 
       // Bounding Box for Oklahoma: (Min Lat, Min Lng, Max Lat, Max Lng)
       const query = `[out:json][timeout:30];node["man_made"="surveillance"]["surveillance:type"~"ALPR|automatic_number_plate_recognition"](33.5,-100.0,37.0,-94.0);out body;`;
-      const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+      
+      let response;
+      let data;
 
       try {
-        const response = await fetch(url);
-        const data = await response.json();
+        // Attempt Primary Server with POST method to bypass CORS and URL length limits
+        try {
+          response = await fetch("https://overpass-api.de/api/interpreter", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: "data=" + encodeURIComponent(query)
+          });
+          if (!response.ok) throw new Error("Primary server rejected request.");
+        } catch (primaryErr) {
+          printLog("Primary server failed, routing to backup server...");
+          // Fallback to secondary server
+          response = await fetch("https://overpass.kumi.systems/api/interpreter", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: "data=" + encodeURIComponent(query)
+          });
+          if (!response.ok) throw new Error("Backup server rejected request.");
+        }
+
+        data = await response.json();
         const nodes = data.elements || [];
         
         printLog(`SUCCESS: Located ${nodes.length} real ALPR cameras in the target sector.`);
@@ -56,7 +76,6 @@
         if (nodes.length === 0) {
           printLog("No cameras found. Terminating protocol.");
           importBtn.disabled = false;
-          importBtn.style.opacity = "1";
           return;
         }
 
@@ -87,12 +106,11 @@
         }
 
         printLog("EXTRACTION COMPLETE! Your GhostLane app is now loaded with real data.");
-        printLog("You can safely close this page and open your GhostLane app.");
+        printLog("You can safely close this page and open your main GhostLane app.");
 
       } catch (err) {
         printLog(`CRITICAL ERROR: ${err.message}`);
         importBtn.disabled = false;
-        importBtn.style.opacity = "1";
       }
     }
   </script>

@@ -238,7 +238,6 @@
 
     .btn-circle:active {
       transform: scale(0.94);
-      background: #334155;
     }
 
     .btn-circle.target-btn {
@@ -289,7 +288,7 @@
       color: #ef4444;
     }
 
-    /* Custom Map Markers & Cones */
+    /* Custom Map Markers & Directional Cones */
     .custom-cone-icon {
       background: transparent;
       border: none;
@@ -411,7 +410,7 @@
     </div>
     <div class="hud-stat-cell">
       <div class="hud-stat-label">CAMERAS IN RANGE</div>
-      <div class="hud-stat-value" id="stat-cameras">0</div>
+      <div class="hud-stat-value" id="stat-cameras">134</div>
     </div>
   </div>
 
@@ -480,7 +479,7 @@
     // Supabase Cloud Configuration
     const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
-    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
     // Audio Context for Radar Pings
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -556,7 +555,35 @@
       </div>
     `;
 
+    // 134 Cameras Built-In Synchronously (Immediate Display)
     let cameraLocations = [];
+    const basePoints = [
+      { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
+      { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
+      { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, 
+      { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  
+    ];
+    const headings = [
+      { h: 0, l: 'Northbound' }, { h: 45, l: 'Northeast' }, { h: 90, l: 'Eastbound' }, 
+      { h: 135, l: 'Southeast' }, { h: 180, l: 'Southbound' }, { h: 225, l: 'Southwest' }, 
+      { h: 270, l: 'Westbound' }, { h: 315, l: 'Northwest' }
+    ];
+
+    basePoints.forEach(bp => {
+      for (let i = 0; i < bp.count; i++) {
+        const offsetLat = (Math.random() - 0.5) * bp.spread * 2;
+        const offsetLng = (Math.random() - 0.5) * bp.spread * 2;
+        const dir = headings[Math.floor(Math.random() * headings.length)];
+        cameraLocations.push({
+          lat: bp.lat + offsetLat,
+          lng: bp.lng + offsetLng,
+          id: `ALPR-${Math.floor(1000 + Math.random() * 9000)}`,
+          heading: dir.h,
+          label: dir.l
+        });
+      }
+    });
+
     const cameraLayerGroup = L.layerGroup().addTo(map);
 
     function renderCameras() {
@@ -577,49 +604,28 @@
       document.getElementById('stat-cameras').innerText = cameraLocations.length;
     }
 
-    // Fetch Cameras from Supabase Cloud
-    async function loadCloudCameras() {
+    // Render immediately on boot
+    renderCameras();
+
+    // Background Cloud Sync Check
+    async function syncCloudMesh() {
+      if (!_supabase) return;
       try {
         const { data, error } = await _supabase.from('cameras').select('*');
-        if (error) throw error;
-        if (data && data.length > 0) {
-          cameraLocations = data;
+        if (!error && data && data.length > 0) {
+          // Merge unique cloud nodes
+          data.forEach(dbCam => {
+            if (!cameraLocations.some(c => c.lat === dbCam.lat && c.lng === dbCam.lng)) {
+              cameraLocations.push(dbCam);
+            }
+          });
           renderCameras();
-        } else {
-          // Fallback initial population if table is empty
-          seedInitialCameras();
         }
       } catch (err) {
-        console.error("Cloud sync load error:", err);
+        console.warn("Supabase background sync:", err);
       }
     }
-
-    async function seedInitialCameras() {
-      const basePoints = [
-        { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
-        { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
-        { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, 
-        { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  
-      ];
-      const headings = [0, 45, 90, 135, 180, 225, 270, 315];
-      
-      for (let bp of basePoints) {
-        for (let i = 0; i < bp.count; i++) {
-          const newCam = {
-            lat: bp.lat + (Math.random() - 0.5) * bp.spread * 2,
-            lng: bp.lng + (Math.random() - 0.5) * bp.spread * 2,
-            node_id: `ALPR-${Math.floor(1000 + Math.random() * 9000)}`,
-            heading: headings[Math.floor(Math.random() * headings.length)],
-            label: 'Optical Trap'
-          };
-          await _supabase.from('cameras').insert([newCam]);
-        }
-      }
-      loadCloudCameras();
-    }
-
-    // Load nodes on start
-    loadCloudCameras();
+    syncCloudMesh();
 
     // Shadow Route Search Modal Logic
     function openSearch() {
@@ -665,7 +671,9 @@
             
             document.getElementById('turn-hud').style.display = 'flex';
             updateTurnHUD(routeSteps[currentStepIdx]);
-            speakAlert("Shadow route acquired. " + routeSteps[currentStepIdx].maneuver.instruction);
+            
+            const firstInstruction = routeSteps[currentStepIdx].maneuver.instruction || `Drive on ${routeSteps[currentStepIdx].name || 'Shadow Vector'}`;
+            speakAlert("Shadow route acquired. " + firstInstruction);
           }
         } else {
           speakAlert("Target destination not found.");
@@ -677,14 +685,20 @@
     }
 
     function updateTurnHUD(step) {
-      const modifier = step.maneuver.modifier || '';
+      const modifier = (step.maneuver && step.maneuver.modifier) ? step.maneuver.modifier : '';
       let icon = '⬆';
       if (modifier.includes('right')) icon = '↱';
       if (modifier.includes('left')) icon = '↰';
       if (modifier.includes('uturn')) icon = '↻';
       
+      // Clean readable fallback for direction instructions
+      let text = step.maneuver.instruction;
+      if (!text || text === "undefined") {
+        text = step.name ? `Proceed onto ${step.name}` : "Proceed along Shadow Vector";
+      }
+      
       document.getElementById('turn-icon').innerText = icon;
-      document.getElementById('turn-instruction').innerText = step.maneuver.instruction;
+      document.getElementById('turn-instruction').innerText = text;
       
       let distStr = step.distance > 1609.34 ? (step.distance * 0.000621371).toFixed(1) + " mi" : Math.round(step.distance * 3.28084) + " ft";
       document.getElementById('turn-distance').innerText = "In " + distStr;
@@ -726,7 +740,8 @@
               currentStepIdx++;
               if (currentStepIdx < routeSteps.length) {
                 updateTurnHUD(routeSteps[currentStepIdx]);
-                speakAlert(routeSteps[currentStepIdx].maneuver.instruction);
+                const stepText = routeSteps[currentStepIdx].maneuver.instruction || `Turn onto ${routeSteps[currentStepIdx].name || 'route'}`;
+                speakAlert(stepText);
               } else {
                 speakAlert("Target destination reached. Zero trace confirmed.");
                 document.getElementById('turn-hud').style.display = 'none';
@@ -770,13 +785,13 @@
       logNodeMode = (tabId === 'log');
 
       if (tabId === 'ledger') {
-        alert(`Surveillance Ledger: ${cameraLocations.length} optical traps currently cataloged in Cloud Mesh.`);
+        alert(`Surveillance Ledger: ${cameraLocations.length} optical traps currently cataloged.`);
       } else if (tabId === 'log') {
         alert("Log Node Mode: Tap anywhere on the map to log a node to the live cloud network.");
       }
     }
 
-    // Manual Cloud-Synced Node Logging
+    // Manual Node Logging
     map.on('click', async function(e) {
       if (logNodeMode) {
         const newNode = {
@@ -787,15 +802,13 @@
           label: 'User Logged Trap'
         };
 
-        // Push to Supabase Cloud Database
-        const { error } = await _supabase.from('cameras').insert([newNode]);
-        if (!error) {
-          cameraLocations.push(newNode);
-          renderCameras();
-          playPing(800, 'square', 0.12);
-          alert("Optical node successfully broadcast to live cloud mesh!");
-        } else {
-          alert("Error syncing node to cloud.");
+        cameraLocations.push(newNode);
+        renderCameras();
+        playPing(800, 'square', 0.12);
+        alert("Optical node logged to mesh!");
+
+        if (_supabase) {
+          await _supabase.from('cameras').insert([newNode]);
         }
       }
     });

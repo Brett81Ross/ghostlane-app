@@ -134,7 +134,7 @@ async function geocodeAddress(address) {
   throw new Error("Address not found. Try adding the city and state.");
 }
 
-// Supabase Cloud Sync Integration
+// Supabase Cloud Sync Integration (Unrestricted Full Mesh Pull)
 const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
 const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
@@ -142,7 +142,8 @@ const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPA
 async function fetchSupabaseCameras() {
   if (!_supabase) return;
   try {
-    const { data, error } = await _supabase.from('cameras').select('*');
+    // Pull ALL records without pagination limits
+    const { data, error } = await _supabase.from('cameras').select('*').limit(5000);
     if (!error && data && data.length > 0) {
       state.cameras = data.map(dbCam => ({
         id: dbCam.node_id || `db-${dbCam.id}`,
@@ -171,7 +172,6 @@ function initMap() {
   state.routeLayer = L.layerGroup().addTo(state.map);
   state.dodgeLayer = L.layerGroup().addTo(state.map);
   
-  // Fetch real database records immediately
   fetchSupabaseCameras();
   updateLedgerDisplay();
 
@@ -227,11 +227,11 @@ function renderCameraNodes() {
   if (statEl) statEl.textContent = state.cameras.length;
 }
 
-// Resilient Network Sync (Overpass Fallback)
-async function syncMeshCameras(lat, lon, radiusMiles = 5) {
+// Expanded 50-Mile Mesh Sync Radius
+async function syncMeshCameras(lat, lon, radiusMiles = 50) {
   if (!lat || !lon) return alert("Location data is missing. Please wait for GPS lock.");
   const radiusMeters = Math.round(radiusMiles * 1609.34);
-  const query = `[out:json][timeout:25];(node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon}););out body;`;
+  const query = `[out:json][timeout:30];(node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon}););out body;`;
   const endpoints = ['https://overpass-api.de/api/interpreter', 'https://lz4.overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
   let data = null;
@@ -259,7 +259,7 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
 
     saveStoredCameras(); 
     renderCameraNodes();
-    alert(`Mesh Sync Complete. Discovered ${newCount} live nodes.`);
+    alert(`Mesh Sync Complete. Discovered ${newCount} live nodes in the expanded radius.`);
   } catch (err) { alert(`Connection Error: ${err.message}.`); }
 }
 
@@ -549,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (toggleRadarBtn) toggleRadarBtn.addEventListener('click', toggleLiveRadar);
 
   const syncBtn = document.getElementById('btn-sync-mesh');
-  if (syncBtn) syncBtn.addEventListener('click', () => { const center = state.position ? state.position : state.map.getCenter(); syncMeshCameras(center.lat, center.lon || center.lng, 5); });
+  if (syncBtn) syncBtn.addEventListener('click', () => { const center = state.position ? state.position : state.map.getCenter(); syncMeshCameras(center.lat, center.lon || center.lng, 50); });
   
   const recenterBtn = document.getElementById('btn-recenter');
   if (recenterBtn) recenterBtn.addEventListener('click', () => { 

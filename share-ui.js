@@ -1,6 +1,6 @@
 (()=>{
   const APP_URL='https://ghostlane-app.vercel.app/radar.html';
-  const QR_URL='/ghostlane-qr.svg?v=1.3.4';
+  const QR_URL='/ghostlane-qr.svg?v=1.3.5';
   const header=document.querySelector('header');
   if(!header||document.getElementById('gl-share-btn'))return;
   header.style.position='relative';
@@ -18,7 +18,7 @@
     <img src="${QR_URL}" alt="GhostLane branded QR code" style="display:block;width:100%;border-radius:14px;background:#06080e;border:1px solid rgba(56,189,248,.2)"/>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px"><button id="gl-share-app" style="border:0;border-radius:10px;padding:12px;background:#38bdf8;color:#020617;font-size:.7rem;font-weight:900">SHARE APP</button><button id="gl-share-qr" style="border:0;border-radius:10px;padding:12px;background:#4ade80;color:#052e16;font-size:.7rem;font-weight:900">SHARE QR</button></div>
     <button id="gl-download-qr" style="width:100%;margin-top:9px;border:1px solid #334155;border-radius:10px;padding:11px;background:#111827;color:#e2e8f0;font-size:.68rem;font-weight:900">DOWNLOAD QR CODE</button>
-    <div style="margin-top:10px;text-align:center;color:#475569;font-size:.58rem;font-weight:700">GhostLane™ • v1.3.4 • Cactus🌵Byte Studios™ • All Rights Reserved</div>
+    <div style="margin-top:10px;text-align:center;color:#475569;font-size:.58rem;font-weight:700">GhostLane™ • v1.3.5 • Cactus🌵Byte Studios™ • All Rights Reserved</div>
   </div>`;
   document.body.appendChild(modal);
   const open=()=>{modal.style.display='flex'}; const close=()=>{modal.style.display='none'};

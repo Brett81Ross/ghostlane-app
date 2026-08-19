@@ -39,7 +39,6 @@
       flex-direction: column;
     }
 
-    /* Top Brand Header Bar */
     header {
       background: #080d1a;
       border-bottom: 1px solid rgba(56, 189, 248, 0.15);
@@ -62,787 +61,205 @@
       background: #0b1120;
     }
 
-    .brand-text-container {
-      display: flex;
-      align-items: baseline;
-      gap: 6px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    .brand-text-container { display:flex; align-items:baseline; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .brand-title { font-size:.95rem; font-weight:800; color:#fff; letter-spacing:.5px; }
+    .brand-subtitle { font-size:.75rem; color:#94a3b8; font-weight:500; }
 
-    .brand-title {
-      font-size: 0.95rem;
-      font-weight: 800;
-      color: #ffffff;
-      letter-spacing: 0.5px;
-    }
+    .top-hud-bar { background:rgba(11,17,32,.95); border-bottom:1px solid rgba(255,255,255,.08); display:grid; grid-template-columns:repeat(4,1fr); padding:10px 4px; z-index:1050; flex-shrink:0; backdrop-filter:blur(10px); }
+    .hud-stat-cell { text-align:center; border-right:1px solid rgba(255,255,255,.05); }
+    .hud-stat-cell:last-child { border-right:none; }
+    .hud-stat-label { font-size:.55rem; color:#64748b; text-transform:uppercase; font-weight:800; letter-spacing:.5px; margin-bottom:4px; }
+    .hud-stat-value { font-size:1.05rem; font-weight:900; color:#38bdf8; line-height:1.1; }
+    .hud-stat-value.score-green { color:#4ade80; }
 
-    .brand-subtitle {
-      font-size: 0.75rem;
-      color: #94a3b8;
-      font-weight: 500;
-    }
+    #turn-hud { display:none; position:absolute; top:130px; left:12px; right:12px; background:rgba(15,23,42,.95); border:1px solid rgba(56,189,248,.4); border-radius:12px; padding:14px 18px; z-index:1060; color:#fff; align-items:center; gap:16px; box-shadow:0 8px 25px rgba(2,132,199,.4); backdrop-filter:blur(10px); }
+    .turn-icon-box { font-size:2.2rem; font-weight:900; line-height:1; color:#38bdf8; }
+    .turn-text h4 { font-size:1.1rem; font-weight:800; margin:0; letter-spacing:.5px; }
+    .turn-text p { font-size:.8rem; margin:4px 0 0 0; font-weight:600; color:#94a3b8; }
 
-    /* Top Telemetry Metric HUD */
-    .top-hud-bar {
-      background: rgba(11, 17, 32, 0.95);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      padding: 10px 4px;
-      z-index: 1050;
-      flex-shrink: 0;
-      backdrop-filter: blur(10px);
-    }
+    #map-wrapper { flex:1; width:100%; position:relative; overflow:hidden; }
+    #map { height:100%; width:100%; background:#05070d; }
 
-    .hud-stat-cell {
-      text-align: center;
-      border-right: 1px solid rgba(255, 255, 255, 0.05);
-    }
+    .floating-actions { position:absolute; right:14px; bottom:24px; display:flex; flex-direction:column; align-items:flex-end; gap:14px; z-index:1000; pointer-events:auto; }
+    .btn-start-radar { background:#38bdf8; color:#030712; border:none; padding:14px 24px; border-radius:30px; font-size:.85rem; font-weight:900; letter-spacing:.8px; cursor:pointer; box-shadow:0 4px 18px rgba(56,189,248,.45); display:flex; align-items:center; justify-content:center; text-transform:uppercase; touch-action:manipulation; transition:all .2s ease; }
+    .btn-start-radar.active { background:#ef4444; color:#fff; box-shadow:0 0 20px rgba(239,68,68,.6); }
+    .btn-start-radar:active { transform:scale(.96); }
+    .btn-circle { width:50px; height:50px; border-radius:50%; background:#1e293b; border:1px solid rgba(56,189,248,.3); color:#f97316; display:flex; align-items:center; justify-content:center; font-size:1.3rem; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,.6); touch-action:manipulation; }
+    .btn-circle:active { transform:scale(.94); }
+    .btn-circle.target-btn { background:#172554; border-color:#ef4444; color:#ef4444; }
+    .btn-circle.location-btn { background:#0f172a; border-color:rgba(56,189,248,.55); color:#38bdf8; }
 
-    .hud-stat-cell:last-child {
-      border-right: none;
-    }
+    .bottom-nav { background:#080d1a; border-top:1px solid rgba(56,189,248,.15); display:grid; grid-template-columns:repeat(4,1fr); padding:8px 0 max(8px, env(safe-area-inset-bottom)); z-index:1100; flex-shrink:0; }
+    .nav-tab { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#64748b; font-size:.65rem; font-weight:700; text-decoration:none; cursor:pointer; padding:6px 0; }
+    .nav-tab .tab-icon { font-size:1.3rem; margin-bottom:2px; }
+    .nav-tab.active { color:#38bdf8; }
+    .nav-tab.tab-orange.active { color:#f97316; }
+    .nav-tab.tab-red.active { color:#ef4444; }
 
-    .hud-stat-label {
-      font-size: 0.55rem;
-      color: #64748b;
-      text-transform: uppercase;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
-    }
+    .app-footer { flex-shrink:0; background:#06080e; color:#475569; border-top:1px solid rgba(56,189,248,.08); text-align:center; font-size:.52rem; font-weight:700; letter-spacing:.35px; padding:3px 8px max(3px, env(safe-area-inset-bottom)); z-index:1101; }
 
-    .hud-stat-value {
-      font-size: 1.05rem;
-      font-weight: 900;
-      color: #38bdf8;
-      line-height: 1.1;
-    }
+    .custom-cone-icon { background:transparent !important; border:none !important; }
+    .user-arrow-puck { width:0; height:0; border-left:10px solid transparent; border-right:10px solid transparent; border-bottom:22px solid #38bdf8; filter:drop-shadow(0 0 8px #38bdf8); transform-origin:center 15px; }
 
-    .hud-stat-value.score-green {
-      color: #4ade80;
-    }
+    .search-modal { display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(5,7,13,.9); z-index:2000; backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:20px; }
+    .search-content { background:#0b1120; border:1px solid #f97316; border-radius:16px; padding:24px; width:100%; box-shadow:0 10px 40px rgba(0,0,0,.9); }
+    .search-content h3 { color:#f97316; font-size:1.1rem; margin-bottom:16px; text-transform:uppercase; font-weight:900; letter-spacing:.5px; }
+    .search-content input { width:100%; padding:14px; border-radius:10px; border:1px solid #1e293b; background:#05070d; color:#fff; margin-bottom:20px; font-size:1rem; outline:none; }
+    .search-content input::placeholder { color:#64748b; }
+    .search-actions { display:flex; gap:12px; justify-content:flex-end; }
+    .search-actions button { padding:12px 20px; border-radius:10px; font-weight:800; font-size:.9rem; border:none; cursor:pointer; text-transform:uppercase; }
+    .btn-cancel { background:#1e293b; color:#fff; }
+    .btn-route { background:#38bdf8; color:#030712; box-shadow:0 4px 12px rgba(56,189,248,.4); }
+    .btn-route:active { transform:scale(.96); }
 
-    /* Turn-by-Turn Navigation HUD */
-    #turn-hud {
-      display: none;
-      position: absolute;
-      top: 130px;
-      left: 12px;
-      right: 12px;
-      background: rgba(15, 23, 42, 0.95);
-      border: 1px solid rgba(56, 189, 248, 0.4);
-      border-radius: 12px;
-      padding: 14px 18px;
-      z-index: 1060;
-      color: #ffffff;
-      align-items: center;
-      gap: 16px;
-      box-shadow: 0 8px 25px rgba(2, 132, 199, 0.4);
-      backdrop-filter: blur(10px);
-    }
+    .leaflet-popup-content-wrapper,.leaflet-popup-tip { background:rgba(8,13,26,.98)!important; color:#f8fafc!important; border:1px solid rgba(56,189,248,.45); box-shadow:0 10px 30px rgba(0,0,0,.8),0 0 18px rgba(56,189,248,.08); }
+    .leaflet-popup-content-wrapper { border-radius:12px; }
+    .leaflet-popup-content { margin:12px 14px; min-width:170px; font-size:.78rem; line-height:1.35; }
+    .leaflet-popup-close-button { color:#94a3b8!important; top:5px!important; right:6px!important; }
+    .node-popup-title { color:#f8fafc; font-weight:900; letter-spacing:.5px; text-transform:uppercase; padding-right:14px; }
+    .node-popup-type { color:#ef4444; font-weight:800; margin-top:3px; }
+    .node-popup-meta { margin-top:8px; color:#94a3b8; font-size:.69rem; display:grid; gap:3px; }
+    .node-popup-hint { margin-top:9px; color:#64748b; font-size:.64rem; text-transform:uppercase; letter-spacing:.45px; }
 
-    .turn-icon-box {
-      font-size: 2.2rem;
-      font-weight: 900;
-      line-height: 1;
-      color: #38bdf8;
-    }
+    .hud-modal { display:none; position:absolute; inset:0; z-index:2600; align-items:center; justify-content:center; padding:22px; background:rgba(2,6,14,.62); backdrop-filter:blur(5px); }
+    .hud-modal.show { display:flex; }
+    .hud-modal-card { width:min(92vw,390px); background:linear-gradient(180deg,rgba(11,17,32,.98),rgba(6,10,20,.98)); border:1px solid rgba(56,189,248,.48); border-radius:15px; box-shadow:0 16px 50px rgba(0,0,0,.82),0 0 25px rgba(56,189,248,.08); overflow:hidden; }
+    .hud-modal-accent { height:3px; background:#38bdf8; }
+    .hud-modal-card.danger { border-color:rgba(239,68,68,.58); }
+    .hud-modal-card.danger .hud-modal-accent { background:#ef4444; }
+    .hud-modal-card.orange { border-color:rgba(249,115,22,.58); }
+    .hud-modal-card.orange .hud-modal-accent { background:#f97316; }
+    .hud-modal-body { padding:18px; }
+    .hud-modal-title { color:#f8fafc; font-size:.82rem; font-weight:900; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
+    .hud-modal-message { color:#cbd5e1; font-size:.84rem; line-height:1.5; }
+    .hud-modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+    .hud-modal-actions button { border:0; border-radius:9px; padding:10px 14px; font-weight:900; font-size:.72rem; letter-spacing:.5px; text-transform:uppercase; cursor:pointer; }
+    .hud-modal-cancel { background:#1e293b; color:#e2e8f0; }
+    .hud-modal-confirm { background:#38bdf8; color:#020617; }
+    .hud-modal-confirm.danger { background:#ef4444; color:#fff; }
 
-    .turn-text h4 {
-      font-size: 1.1rem;
-      font-weight: 800;
-      margin: 0;
-      letter-spacing: 0.5px;
-    }
-
-    .turn-text p {
-      font-size: 0.8rem;
-      margin: 4px 0 0 0;
-      font-weight: 600;
-      color: #94a3b8;
-    }
-
-    /* Map Interface */
-    #map-wrapper {
-      flex: 1;
-      width: 100%;
-      position: relative;
-      overflow: hidden;
-    }
-
-    #map {
-      height: 100%;
-      width: 100%;
-      background: #05070d;
-    }
-
-    /* Floating Right Side Action Controls */
-    .floating-actions {
-      position: absolute;
-      right: 14px;
-      bottom: 24px;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 14px;
-      z-index: 1000;
-      pointer-events: auto;
-    }
-
-    .btn-start-radar {
-      background: #38bdf8;
-      color: #030712;
-      border: none;
-      padding: 14px 24px;
-      border-radius: 30px;
-      font-size: 0.85rem;
-      font-weight: 900;
-      letter-spacing: 0.8px;
-      cursor: pointer;
-      box-shadow: 0 4px 18px rgba(56, 189, 248, 0.45);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-transform: uppercase;
-      touch-action: manipulation;
-      transition: all 0.2s ease;
-    }
-
-    .btn-start-radar.active {
-      background: #ef4444;
-      color: #ffffff;
-      box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
-    }
-
-    .btn-start-radar:active {
-      transform: scale(0.96);
-    }
-
-    .btn-circle {
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      background: #1e293b;
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      color: #f97316;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.3rem;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
-      touch-action: manipulation;
-    }
-
-    .btn-circle:active {
-      transform: scale(0.94);
-    }
-
-    .btn-circle.target-btn {
-      background: #172554;
-      border-color: #ef4444;
-      color: #ef4444;
-    }
-
-    /* Bottom Navigation Bar */
-    .bottom-nav {
-      background: #080d1a;
-      border-top: 1px solid rgba(56, 189, 248, 0.15);
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      padding: 8px 0 max(8px, env(safe-area-inset-bottom));
-      z-index: 1100;
-      flex-shrink: 0;
-    }
-
-    .nav-tab {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      color: #64748b;
-      font-size: 0.65rem;
-      font-weight: 700;
-      text-decoration: none;
-      cursor: pointer;
-      padding: 6px 0;
-    }
-
-    .nav-tab .tab-icon {
-      font-size: 1.3rem;
-      margin-bottom: 2px;
-    }
-
-    .nav-tab.active {
-      color: #38bdf8;
-    }
-
-    .nav-tab.tab-orange.active {
-      color: #f97316;
-    }
-
-    .nav-tab.tab-red.active {
-      color: #ef4444;
-    }
-
-    /* Directional Camera Cones & Puck */
-    .custom-cone-icon {
-      background: transparent !important;
-      border: none !important;
-    }
-
-    .user-arrow-puck {
-      width: 0;
-      height: 0;
-      border-left: 10px solid transparent;
-      border-right: 10px solid transparent;
-      border-bottom: 22px solid #38bdf8;
-      filter: drop-shadow(0 0 8px #38bdf8);
-      transform-origin: center 15px;
-    }
-
-    /* Shadow Route Search Modal */
-    .search-modal {
-      display: none;
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(5, 7, 13, 0.9);
-      z-index: 2000;
-      backdrop-filter: blur(8px);
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-
-    .search-content {
-      background: #0b1120;
-      border: 1px solid #f97316;
-      border-radius: 16px;
-      padding: 24px;
-      width: 100%;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9);
-    }
-
-    .search-content h3 {
-      color: #f97316;
-      font-size: 1.1rem;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-      font-weight: 900;
-      letter-spacing: 0.5px;
-    }
-
-    .search-content input {
-      width: 100%;
-      padding: 14px;
-      border-radius: 10px;
-      border: 1px solid #1e293b;
-      background: #05070d;
-      color: #ffffff;
-      margin-bottom: 20px;
-      font-size: 1rem;
-      outline: none;
-    }
-
-    .search-content input::placeholder {
-      color: #64748b;
-    }
-
-    .search-actions {
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-    }
-
-    .search-actions button {
-      padding: 12px 20px;
-      border-radius: 10px;
-      font-weight: 800;
-      font-size: 0.9rem;
-      border: none;
-      cursor: pointer;
-      text-transform: uppercase;
-    }
-
-    .btn-cancel {
-      background: #1e293b;
-      color: #ffffff;
-    }
-
-    .btn-route {
-      background: #38bdf8;
-      color: #030712;
-      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.4);
-    }
-
-    .btn-route:active {
-      transform: scale(0.96);
-    }
+    .hud-toast { position:absolute; left:50%; bottom:18px; transform:translate(-50%,18px); z-index:2500; width:min(calc(100% - 32px),420px); background:rgba(8,13,26,.96); color:#e2e8f0; border:1px solid rgba(56,189,248,.42); border-radius:11px; padding:11px 13px; box-shadow:0 10px 28px rgba(0,0,0,.72); font-size:.76rem; font-weight:700; letter-spacing:.15px; opacity:0; pointer-events:none; transition:opacity .18s ease,transform .18s ease; }
+    .hud-toast.show { opacity:1; transform:translate(-50%,0); }
+    .hud-toast.danger { border-color:rgba(239,68,68,.55); }
+    .hud-toast.orange { border-color:rgba(249,115,22,.55); }
   </style>
 </head>
 <body>
-
-  <!-- Top Brand Header Bar -->
   <header>
     <img src="logo-gl.png" alt="GL Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/38/0b1120/38bdf8?text=GL'">
-    <div class="brand-text-container">
-      <span class="brand-title">GhostLane™</span>
-      <span class="brand-subtitle"> | Zero-Trace Automotive Radar</span>
-    </div>
+    <div class="brand-text-container"><span class="brand-title">GhostLane™</span><span class="brand-subtitle"> | Zero-Trace Automotive Radar</span></div>
   </header>
 
-  <!-- Top Telemetry Metric HUD -->
   <div class="top-hud-bar">
-    <div class="hud-stat-cell">
-      <div class="hud-stat-label">SPEED</div>
-      <div class="hud-stat-value" id="stat-speed">0 <span style="font-size:0.65rem;">MPH</span></div>
-    </div>
-    <div class="hud-stat-cell">
-      <div class="hud-stat-label">HEADING</div>
-      <div class="hud-stat-value" id="stat-heading">0° <span style="font-size:0.65rem;">N</span></div>
-    </div>
-    <div class="hud-stat-cell">
-      <div class="hud-stat-label">PRIVACY SCORE</div>
-      <div class="hud-stat-value score-green" id="stat-score">A+</div>
-    </div>
-    <div class="hud-stat-cell">
-      <div class="hud-stat-label">CAMERAS IN RANGE</div>
-      <div class="hud-stat-value" id="stat-cameras">134</div>
-    </div>
+    <div class="hud-stat-cell"><div class="hud-stat-label">SPEED</div><div class="hud-stat-value" id="stat-speed">0 <span style="font-size:0.65rem;">MPH</span></div></div>
+    <div class="hud-stat-cell"><div class="hud-stat-label">HEADING</div><div class="hud-stat-value" id="stat-heading">0° <span style="font-size:0.65rem;">N</span></div></div>
+    <div class="hud-stat-cell"><div class="hud-stat-label">PRIVACY SCORE</div><div class="hud-stat-value score-green" id="stat-score">A+</div></div>
+    <div class="hud-stat-cell"><div class="hud-stat-label">CAMERAS IN RANGE</div><div class="hud-stat-value" id="stat-cameras">134</div></div>
   </div>
 
-  <!-- Turn-by-Turn HUD -->
-  <div id="turn-hud">
-    <div class="turn-icon-box" id="turn-icon">⬆</div>
-    <div class="turn-text">
-      <h4 id="turn-instruction">Proceed on Shadow Vector</h4>
-      <p id="turn-distance">-- ft</p>
-    </div>
-  </div>
+  <div id="turn-hud"><div class="turn-icon-box" id="turn-icon">⬆</div><div class="turn-text"><h4 id="turn-instruction">Proceed on Shadow Vector</h4><p id="turn-distance">-- ft</p></div></div>
 
-  <!-- Map Canvas -->
   <div id="map-wrapper">
     <div id="map"></div>
+    <div id="search-modal" class="search-modal"><div class="search-content"><h3>Deploy Shadow Route</h3><input type="text" id="dest-address" placeholder="Enter target address..."><div class="search-actions"><button class="btn-cancel" onclick="closeSearch()">Abort</button><button class="btn-route" onclick="executeSearch()">Engage Vector</button></div></div></div>
 
-    <!-- Shadow Route Search Modal -->
-    <div id="search-modal" class="search-modal">
-      <div class="search-content">
-        <h3>Deploy Shadow Route</h3>
-        <input type="text" id="dest-address" placeholder="Enter target address...">
-        <div class="search-actions">
-          <button class="btn-cancel" onclick="closeSearch()">Abort</button>
-          <button class="btn-route" onclick="executeSearch()">Engage Vector</button>
-        </div>
-      </div>
-    </div>
+    <div id="hud-modal" class="hud-modal" role="dialog" aria-modal="true" aria-hidden="true"><div id="hud-modal-card" class="hud-modal-card"><div class="hud-modal-accent"></div><div class="hud-modal-body"><div id="hud-modal-title" class="hud-modal-title">GhostLane</div><div id="hud-modal-message" class="hud-modal-message"></div><div class="hud-modal-actions"><button id="hud-modal-cancel" class="hud-modal-cancel" type="button">Cancel</button><button id="hud-modal-confirm" class="hud-modal-confirm" type="button">OK</button></div></div></div></div>
+    <div id="hud-toast" class="hud-toast" role="status" aria-live="polite"></div>
 
-    <!-- Floating Right Side Controls -->
     <div class="floating-actions" id="floating-ctrls">
-      <button class="btn-start-radar" id="radar-toggle-btn" onclick="toggleRadarMode()">
-        <span id="radar-btn-text">START RADAR</span>
-      </button>
-
-      <button class="btn-circle" onclick="openSearch()" title="Shadow Route">
-        <span>🔀</span>
-      </button>
-
-      <button class="btn-circle target-btn" onclick="centerVehicleLocation()" title="Center GPS">
-        <span>🎯</span>
-      </button>
+      <button class="btn-start-radar" id="radar-toggle-btn" onclick="toggleRadarMode()"><span id="radar-btn-text">START RADAR</span></button>
+      <button class="btn-circle" onclick="openSearch()" title="Shadow Route"><span>🔀</span></button>
+      <button class="btn-circle target-btn" onclick="focusNearestNode()" title="Focus Nearest Node" aria-label="Focus nearest surveillance node"><span>🎯</span></button>
+      <button class="btn-circle location-btn" id="btn-current-location" onclick="centerCurrentLocation()" title="Current Location" aria-label="Center map on current location"><span>📍</span></button>
     </div>
   </div>
 
-  <!-- Bottom Navigation Bar -->
   <nav class="bottom-nav">
-    <div class="nav-tab active" id="tab-radar" onclick="switchTab('radar')">
-      <span class="tab-icon">📡</span>
-      <span>Radar</span>
-    </div>
-    <div class="nav-tab tab-orange" id="tab-shadow" onclick="openSearch()">
-      <span class="tab-icon">🔀</span>
-      <span>Shadow Route</span>
-    </div>
-    <div class="nav-tab" id="tab-ledger" onclick="switchTab('ledger')">
-      <span class="tab-icon">📋</span>
-      <span>Ledger</span>
-    </div>
-    <div class="nav-tab tab-red" id="tab-log" onclick="switchTab('log')">
-      <span class="tab-icon">📍</span>
-      <span>Log Node</span>
-    </div>
+    <div class="nav-tab active" id="tab-radar" onclick="switchTab('radar')"><span class="tab-icon">📡</span><span>Radar</span></div>
+    <div class="nav-tab tab-orange" id="tab-shadow" onclick="openSearch()"><span class="tab-icon">🔀</span><span>Shadow Route</span></div>
+    <div class="nav-tab" id="tab-ledger" onclick="switchTab('ledger')"><span class="tab-icon">📋</span><span>Ledger</span></div>
+    <div class="nav-tab tab-red" id="tab-log" onclick="switchTab('log')"><span class="tab-icon">📍</span><span>Log Node</span></div>
   </nav>
+  <footer class="app-footer">GhostLane™ • Cactus🌵Byte Studios™ • All Rights Reserved</footer>
 
   <script>
-    // Audio Context for Radar Pings
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    function playPing(freq = 920, type = 'sine', duration = 0.1) {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      try {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + duration);
-      } catch (e) {
-        console.warn(e);
-      }
+    function playPing(freq=920,type='sine',duration=.1){if(audioCtx.state==='suspended')audioCtx.resume();try{const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();osc.type=type;osc.frequency.setValueAtTime(freq,audioCtx.currentTime);gain.gain.setValueAtTime(.18,audioCtx.currentTime);gain.gain.exponentialRampToValueAtTime(.01,audioCtx.currentTime+duration);osc.connect(gain);gain.connect(audioCtx.destination);osc.start();osc.stop(audioCtx.currentTime+duration);}catch(e){console.warn(e)}}
+    const synth=window.speechSynthesis;
+    function speakAlert(text){if(synth.speaking)synth.cancel();const utterance=new SpeechSynthesisUtterance(text);utterance.rate=.95;utterance.pitch=1;synth.speak(utterance)}
+
+    const SUPABASE_URL="https://zksyyjpepnulbmkscpyl.supabase.co";
+    const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
+    const _supabase=(typeof supabase!=='undefined')?supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
+
+    let userCoords=[35.4676,-97.5164],isRadarActive=false,logNodeMode=false,userMarker=null,routePolyline=null,routeSteps=[],currentStepIdx=0,radarWatchId=null,hasLiveGpsFix=false,lastThreatAlertAt=0,lastThreatKey=null,toastTimer=null,activeModalResolver=null;
+
+    function showHudModal(title,message,options={}){
+      const modal=document.getElementById('hud-modal'),card=document.getElementById('hud-modal-card'),titleEl=document.getElementById('hud-modal-title'),messageEl=document.getElementById('hud-modal-message'),cancelBtn=document.getElementById('hud-modal-cancel'),confirmBtn=document.getElementById('hud-modal-confirm');
+      if(activeModalResolver)activeModalResolver(false);
+      titleEl.textContent=title||'GhostLane'; messageEl.textContent=message||''; card.className=`hud-modal-card ${options.tone||''}`.trim(); confirmBtn.className=`hud-modal-confirm ${options.tone==='danger'?'danger':''}`.trim(); confirmBtn.textContent=options.confirmLabel||'OK'; cancelBtn.textContent=options.cancelLabel||'Cancel'; cancelBtn.style.display=options.confirm?'inline-flex':'none'; modal.classList.add('show'); modal.setAttribute('aria-hidden','false');
+      return new Promise(resolve=>{activeModalResolver=resolve;const finish=value=>{modal.classList.remove('show');modal.setAttribute('aria-hidden','true');activeModalResolver=null;resolve(value)};confirmBtn.onclick=()=>finish(true);cancelBtn.onclick=()=>finish(false)});
     }
 
-    // Text-to-Speech Engine
-    const synth = window.speechSynthesis;
-    function speakAlert(text) {
-      if (synth.speaking) synth.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.95;
-      utterance.pitch = 1;
-      synth.speak(utterance);
-    }
+    function showHudToast(message,tone=''){const toast=document.getElementById('hud-toast');if(toastTimer)clearTimeout(toastTimer);toast.textContent=message;toast.className=`hud-toast ${tone}`.trim();requestAnimationFrame(()=>toast.classList.add('show'));toastTimer=setTimeout(()=>toast.classList.remove('show'),2600)}
+    function cameraKey(cam){return String(cam.node_id||cam.id||`${cam.lat.toFixed(6)},${cam.lng.toFixed(6)}`)}
+    function buildNodePopup(cam){const id=cam.node_id||cam.id||'UNKNOWN NODE',label=cam.label||cam.hardware||'Optical Trap',heading=Number.isFinite(Number(cam.heading))?`${Math.round(Number(cam.heading))}°`:'Unknown',source=cam._cloud?'Cloud Mesh':(cam._manual?'User Logged':'Local Mesh');return `<div class="node-popup-title">${id}</div><div class="node-popup-type">${label}</div><div class="node-popup-meta"><span>Lens heading: ${heading}</span><span>Source: ${source}</span></div><div class="node-popup-hint">Press and hold node to delete</div>`}
 
-    // Supabase Initialization (Safe)
-    const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
-    const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+    const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([35.4676,-97.5164],11);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
+    const floatControls=document.getElementById('floating-ctrls');if(floatControls){L.DomEvent.disableClickPropagation(floatControls);L.DomEvent.disableScrollPropagation(floatControls)}
+    const puckIcon=L.divIcon({className:'user-puck-wrapper',html:'<div class="user-arrow-puck" id="user-arrow"></div>',iconSize:[20,20]});
+    userMarker=L.marker(userCoords,{icon:puckIcon,zIndexOffset:1000}).addTo(map);
 
-    // State Variables
-    let userCoords = [35.4676, -97.5164];
-    let isRadarActive = false;
-    let logNodeMode = false;
-    let userMarker = null;
-    let routePolyline = null;
-    let routeSteps = [];
-    let currentStepIdx = 0;
+    function getConeHtml(heading){return `<div style="width:60px;height:60px;transform:rotate(${heading}deg);transform-origin:30px 30px;display:flex;align-items:center;justify-content:center;"><svg width="60" height="60" viewBox="0 0 60 60"><polygon points="30,30 14,4 46,4" fill="rgba(239, 68, 68, 0.35)" stroke="#ef4444" stroke-width="1.5" /><circle cx="30" cy="30" r="5" fill="#ffffff" stroke="#ef4444" stroke-width="2" /></svg></div>`}
 
-    // Initialize Map
-    const map = L.map('map', {
-      zoomControl: false,
-      attributionControl: false
-    }).setView([35.4676, -97.5164], 11);
+    let cameraLocations=[];
+    const basePoints=[{lat:35.4676,lng:-97.5164,count:48,spread:.055},{lat:35.5053,lng:-97.6406,count:26,spread:.035},{lat:35.4495,lng:-97.3967,count:28,spread:.038},{lat:35.3395,lng:-97.4867,count:32,spread:.032}];
+    const headings=[{h:0,l:'Northbound'},{h:45,l:'Northeast'},{h:90,l:'Eastbound'},{h:135,l:'Southeast'},{h:180,l:'Southbound'},{h:225,l:'Southwest'},{h:270,l:'Westbound'},{h:315,l:'Northwest'}];
+    let seed=42;function deterministicRandom(){seed=(seed*9301+49297)%233280;return seed/233280}
+    basePoints.forEach((bp,bIdx)=>{for(let i=0;i<bp.count;i++){const offsetLat=(deterministicRandom()-.5)*bp.spread*2,offsetLng=(deterministicRandom()-.5)*bp.spread*2,dir=headings[Math.floor(deterministicRandom()*headings.length)];cameraLocations.push({lat:bp.lat+offsetLat,lng:bp.lng+offsetLng,id:`ALPR-${1000+bIdx*50+i}`,heading:dir.h,label:dir.l})}});
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      subdomains: 'abcd'
-    }).addTo(map);
+    let hiddenNodeKeys=[];try{hiddenNodeKeys=JSON.parse(localStorage.getItem('gl_hidden_nodes')||'[]');const savedNodes=JSON.parse(localStorage.getItem('gl_manual_nodes')||'[]');savedNodes.forEach(n=>cameraLocations.push({...n,_manual:true}));cameraLocations=cameraLocations.filter(cam=>!hiddenNodeKeys.includes(cameraKey(cam)))}catch(e){console.warn('Local storage check bypassed')}
+    const cameraLayerGroup=L.layerGroup().addTo(map);
 
-    const floatControls = document.getElementById('floating-ctrls');
-    if (floatControls) {
-      L.DomEvent.disableClickPropagation(floatControls);
-      L.DomEvent.disableScrollPropagation(floatControls);
-    }
+    function removeLocalNodeReferences(cam){const key=cameraKey(cam);cameraLocations=cameraLocations.filter(c=>cameraKey(c)!==key);try{const saved=JSON.parse(localStorage.getItem('gl_manual_nodes')||'[]'),filtered=saved.filter(n=>cameraKey(n)!==key);localStorage.setItem('gl_manual_nodes',JSON.stringify(filtered));if(!cam._manual&&!cam._cloud){const hidden=JSON.parse(localStorage.getItem('gl_hidden_nodes')||'[]');if(!hidden.includes(key))hidden.push(key);localStorage.setItem('gl_hidden_nodes',JSON.stringify(hidden))}}catch(err){console.warn('Local node cleanup skipped:',err)}}
 
-    // User Location Puck
-    const puckIcon = L.divIcon({
-      className: 'user-puck-wrapper',
-      html: '<div class="user-arrow-puck" id="user-arrow"></div>',
-      iconSize: [20, 20]
-    });
-    userMarker = L.marker(userCoords, { icon: puckIcon, zIndexOffset: 1000 }).addTo(map);
+    async function deleteCameraNode(cam){const nodeId=cam.node_id||cam.id||'this node',confirmed=await showHudModal('Delete Surveillance Node',`Remove ${nodeId} from GhostLane?${cam._cloud?' This will also delete it from the cloud mesh.':''}`,{confirm:true,confirmLabel:'Delete Node',tone:'danger'});if(!confirmed)return;if(cam._cloud&&_supabase){try{const cloudId=cam.node_id||cam.id;let deleteQuery=_supabase.from('cameras').delete();deleteQuery=cam.node_id?deleteQuery.eq('node_id',cloudId):deleteQuery.eq('id',cloudId);const{error}=await deleteQuery;if(error)throw error}catch(err){console.error('Cloud delete failed:',err);await showHudModal('Cloud Delete Failed','GhostLane could not remove this node from Supabase, so it was left on the map.',{tone:'danger'});return}}removeLocalNodeReferences(cam);renderCameras();playPing(520,'square',.1);showHudToast(`${nodeId} removed from mesh.`,'danger')}
 
-    // Directional SVG Cone HTML
-    function getConeHtml(heading) {
-      return `
-        <div style="width:60px;height:60px;transform:rotate(${heading}deg);transform-origin:30px 30px;display:flex;align-items:center;justify-content:center;">
-          <svg width="60" height="60" viewBox="0 0 60 60">
-            <polygon points="30,30 14,4 46,4" fill="rgba(239, 68, 68, 0.35)" stroke="#ef4444" stroke-width="1.5" />
-            <circle cx="30" cy="30" r="5" fill="#ffffff" stroke="#ef4444" stroke-width="2" />
-          </svg>
-        </div>
-      `;
-    }
+    function attachLongPressDelete(marker,cam){const el=marker.getElement();if(!el)return;let timer=null,startX=0,startY=0,fired=false;const clear=()=>{if(timer)clearTimeout(timer);timer=null};el.addEventListener('pointerdown',e=>{fired=false;startX=e.clientX;startY=e.clientY;clear();timer=setTimeout(()=>{fired=true;marker._ghostLongPressed=true;map.closePopup();if(navigator.vibrate)navigator.vibrate(35);deleteCameraNode(cam)},700)},{passive:true});el.addEventListener('pointermove',e=>{if(Math.abs(e.clientX-startX)>9||Math.abs(e.clientY-startY)>9)clear()},{passive:true});el.addEventListener('pointerup',clear,{passive:true});el.addEventListener('pointercancel',clear,{passive:true});el.addEventListener('pointerleave',clear,{passive:true});marker.on('contextmenu',e=>{L.DomEvent.preventDefault(e.originalEvent);deleteCameraNode(cam)});marker.on('popupopen',()=>{if(marker._ghostLongPressed||fired){map.closePopup(marker.getPopup());marker._ghostLongPressed=false;fired=false}})}
 
-    // 134 Deterministic Base Cameras (Guaranteed to load)
-    let cameraLocations = [];
-    const basePoints = [
-      { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
-      { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
-      { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, 
-      { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  
-    ];
-    const headings = [
-      { h: 0, l: 'Northbound' }, { h: 45, l: 'Northeast' }, { h: 90, l: 'Eastbound' }, 
-      { h: 135, l: 'Southeast' }, { h: 180, l: 'Southbound' }, { h: 225, l: 'Southwest' }, 
-      { h: 270, l: 'Westbound' }, { h: 315, l: 'Northwest' }
-    ];
-
-    let seed = 42;
-    function deterministicRandom() {
-      seed = (seed * 9301 + 49297) % 233280;
-      return seed / 233280;
-    }
-
-    basePoints.forEach((bp, bIdx) => {
-      for (let i = 0; i < bp.count; i++) {
-        const offsetLat = (deterministicRandom() - 0.5) * bp.spread * 2;
-        const offsetLng = (deterministicRandom() - 0.5) * bp.spread * 2;
-        const dir = headings[Math.floor(deterministicRandom() * headings.length)];
-        cameraLocations.push({
-          lat: bp.lat + offsetLat,
-          lng: bp.lng + offsetLng,
-          id: `ALPR-${1000 + bIdx * 50 + i}`,
-          heading: dir.h,
-          label: dir.l
-        });
-      }
-    });
-
-    // Safely load any manually saved nodes from browser memory as a backup
-    try {
-      const savedNodes = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
-      savedNodes.forEach(n => cameraLocations.push(n));
-    } catch(e) { console.warn("Local storage check bypassed"); }
-
-    const cameraLayerGroup = L.layerGroup().addTo(map);
-
-    function renderCameras() {
-      cameraLayerGroup.clearLayers();
-      cameraLocations.forEach(cam => {
-        const icon = L.divIcon({
-          className: 'custom-cone-icon',
-          html: getConeHtml(cam.heading || 0),
-          iconSize: [60, 60],
-          iconAnchor: [30, 30],
-          popupAnchor: [0, -15]
-        });
-
-        L.marker([cam.lat, cam.lng], { icon: icon })
-         .bindPopup(`<b>${cam.node_id || cam.id}</b><br><span style="color:#ef4444;font-weight:bold;">${cam.label || 'Optical Trap'}</span>`)
-         .addTo(cameraLayerGroup);
-      });
-      document.getElementById('stat-cameras').innerText = cameraLocations.length;
-    }
-
-    // Instantly draw the local cameras so you never see a blank map
+    function renderCameras(){cameraLayerGroup.clearLayers();cameraLocations.forEach(cam=>{const icon=L.divIcon({className:'custom-cone-icon',html:getConeHtml(cam.heading||0),iconSize:[60,60],iconAnchor:[30,30],popupAnchor:[0,-15]});const marker=L.marker([cam.lat,cam.lng],{icon}).bindPopup(buildNodePopup(cam),{closeButton:true,maxWidth:250}).addTo(cameraLayerGroup);attachLongPressDelete(marker,cam)});document.getElementById('stat-cameras').innerText=cameraLocations.length}
     renderCameras();
 
-    // Background Task: Silently fetch community nodes from Supabase
-    async function syncCloudCameras() {
-      if (!_supabase) return;
-      try {
-        const { data, error } = await _supabase.from('cameras').select('*');
-        if (!error && data && data.length > 0) {
-          let updated = false;
-          data.forEach(dbCam => {
-            if (!cameraLocations.some(c => c.lat === dbCam.lat && c.lng === dbCam.lng)) {
-              cameraLocations.push(dbCam);
-              updated = true;
-            }
-          });
-          if (updated) renderCameras();
-        }
-      } catch (err) {
-        console.warn("Background sync ignored:", err);
-      }
-    }
+    async function syncCloudCameras(){if(!_supabase)return;try{const{data,error}=await _supabase.from('cameras').select('*');if(!error&&data&&data.length>0){let updated=false;data.forEach(dbCam=>{const cloudCam={...dbCam,_cloud:true};if(hiddenNodeKeys.includes(cameraKey(cloudCam)))return;const existingIndex=cameraLocations.findIndex(c=>cameraKey(c)===cameraKey(cloudCam)||(c.lat===dbCam.lat&&c.lng===dbCam.lng));if(existingIndex===-1){cameraLocations.push(cloudCam);updated=true}else if(!cameraLocations[existingIndex]._cloud){cameraLocations[existingIndex]={...cameraLocations[existingIndex],...cloudCam};updated=true}});if(updated)renderCameras()}}catch(err){console.warn('Background sync ignored:',err)}}
     syncCloudCameras();
 
-    // Shadow Route Search Modal Logic
-    function openSearch() {
-      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-      document.getElementById('tab-shadow').classList.add('active');
-      document.getElementById('search-modal').style.display = 'flex';
-      playPing(1000, 'sine', 0.1);
-    }
+    function openSearch(){document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));document.getElementById('tab-shadow').classList.add('active');document.getElementById('search-modal').style.display='flex';playPing(1000,'sine',.1)}
+    function closeSearch(){document.getElementById('search-modal').style.display='none'}
 
-    function closeSearch() {
-      document.getElementById('search-modal').style.display = 'none';
-    }
+    async function executeSearch(){const query=document.getElementById('dest-address').value;if(!query)return;closeSearch();speakAlert('Calculating zero trace evasion vectors.');const nomUrl=`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;try{const res=await fetch(nomUrl),data=await res.json();if(data.length>0){const destCoords=[parseFloat(data[0].lat),parseFloat(data[0].lon)],start=`${userCoords[1]},${userCoords[0]}`,end=`${destCoords[1]},${destCoords[0]}`,osrmUrl=`https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;const oRes=await fetch(osrmUrl),oData=await oRes.json();if(oData.routes&&oData.routes.length>0){if(routePolyline)map.removeLayer(routePolyline);const coords=oData.routes[0].geometry.coordinates.map(pt=>[pt[1],pt[0]]);routePolyline=L.polyline(coords,{color:'#38bdf8',weight:6,dashArray:'8, 8'}).addTo(map);map.fitBounds(routePolyline.getBounds(),{padding:[60,60]});routeSteps=oData.routes[0].legs[0].steps;currentStepIdx=0;document.getElementById('turn-hud').style.display='flex';updateTurnHUD(routeSteps[currentStepIdx]);const firstInstruction=routeSteps[currentStepIdx].maneuver.instruction||`Drive on ${routeSteps[currentStepIdx].name||'Shadow Vector'}`;speakAlert('Shadow route acquired. '+firstInstruction)}}else speakAlert('Target destination not found.')}catch(err){console.error(err);speakAlert('Routing network error.')}}
 
-    async function executeSearch() {
-      const query = document.getElementById('dest-address').value;
-      if (!query) return;
-      closeSearch();
-      speakAlert("Calculating zero trace evasion vectors.");
+    function updateTurnHUD(step){const modifier=(step.maneuver&&step.maneuver.modifier)?step.maneuver.modifier:'';let icon='⬆';if(modifier.includes('right'))icon='↱';if(modifier.includes('left'))icon='↰';if(modifier.includes('uturn'))icon='↻';let text=step.maneuver.instruction;if(!text||text==='undefined')text=step.name?`Proceed onto ${step.name}`:'Proceed along Shadow Vector';document.getElementById('turn-icon').innerText=icon;document.getElementById('turn-instruction').innerText=text;const distStr=step.distance>1609.34?(step.distance*.000621371).toFixed(1)+' mi':Math.round(step.distance*3.28084)+' ft';document.getElementById('turn-distance').innerText='In '+distStr}
 
-      const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-      try {
-        const res = await fetch(nomUrl);
-        const data = await res.json();
-        
-        if (data.length > 0) {
-          let destCoords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-          let start = `${userCoords[1]},${userCoords[0]}`;
-          let end = `${destCoords[1]},${destCoords[0]}`;
-          let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;
-          
-          const oRes = await fetch(osrmUrl);
-          const oData = await oRes.json();
+    function updateFromPosition(pos){userCoords=[pos.coords.latitude,pos.coords.longitude];hasLiveGpsFix=true;userMarker.setLatLng(userCoords);const speed=pos.coords.speed&&pos.coords.speed>0?Math.round(pos.coords.speed*2.23694):0;document.getElementById('stat-speed').innerHTML=`${speed} <span style="font-size:0.65rem;">MPH</span>`;if(pos.coords.heading!==null&&!isNaN(pos.coords.heading)){const h=Math.round(pos.coords.heading);document.getElementById('stat-heading').innerHTML=`${h}° <span style="font-size:0.65rem;">HDG</span>`;const arrow=document.getElementById('user-arrow');if(arrow)arrow.style.transform=`rotate(${h}deg)`}if(isRadarActive)evaluateRadarThreats();updateRouteProgress()}
 
-          if (oData.routes && oData.routes.length > 0) {
-            if (routePolyline) map.removeLayer(routePolyline);
-            
-            let coords = oData.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
-            routePolyline = L.polyline(coords, { color: '#38bdf8', weight: 6, dashArray: '8, 8' }).addTo(map);
-            map.fitBounds(routePolyline.getBounds(), { padding: [60, 60] });
+    function updateRouteProgress(){if(!(routeSteps.length>0&&currentStepIdx<routeSteps.length))return;const nextManeuver=routeSteps[currentStepIdx].maneuver.location,distToTurn=map.distance(userCoords,[nextManeuver[1],nextManeuver[0]]),distStr=distToTurn>1609.34?(distToTurn*.000621371).toFixed(1)+' mi':Math.round(distToTurn*3.28084)+' ft';document.getElementById('turn-distance').innerText='In '+distStr;if(distToTurn<40){currentStepIdx++;if(currentStepIdx<routeSteps.length){updateTurnHUD(routeSteps[currentStepIdx]);const stepText=routeSteps[currentStepIdx].maneuver.instruction||`Turn onto ${routeSteps[currentStepIdx].name||'route'}`;speakAlert(stepText)}else{speakAlert('Target destination reached. Zero trace confirmed.');document.getElementById('turn-hud').style.display='none';routeSteps=[]}}}
 
-            routeSteps = oData.routes[0].legs[0].steps;
-            currentStepIdx = 0;
-            
-            document.getElementById('turn-hud').style.display = 'flex';
-            updateTurnHUD(routeSteps[currentStepIdx]);
-            
-            const firstInstruction = routeSteps[currentStepIdx].maneuver.instruction || `Drive on ${routeSteps[currentStepIdx].name || 'Shadow Vector'}`;
-            speakAlert("Shadow route acquired. " + firstInstruction);
-          }
-        } else {
-          speakAlert("Target destination not found.");
-        }
-      } catch (err) {
-        console.error(err);
-        speakAlert("Routing network error.");
-      }
-    }
+    function evaluateRadarThreats(){let closest=null,closestMeters=Infinity;for(const cam of cameraLocations){const distance=map.distance(userCoords,[cam.lat,cam.lng]);if(distance<closestMeters){closest=cam;closestMeters=distance}}if(!closest||closestMeters>=180)return;const now=Date.now(),key=cameraKey(closest),canAlert=key!==lastThreatKey||now-lastThreatAlertAt>10000;if(!canAlert)return;lastThreatKey=key;lastThreatAlertAt=now;playPing(440,'sawtooth',.15);const feet=Math.max(1,Math.round(closestMeters*3.28084));speakAlert(`Optical surveillance node ahead. ${feet} feet.`);showHudToast(`RADAR: surveillance node ${feet} ft away`,'danger')}
 
-    function updateTurnHUD(step) {
-      const modifier = (step.maneuver && step.maneuver.modifier) ? step.maneuver.modifier : '';
-      let icon = '⬆';
-      if (modifier.includes('right')) icon = '↱';
-      if (modifier.includes('left')) icon = '↰';
-      if (modifier.includes('uturn')) icon = '↻';
-      
-      let text = step.maneuver.instruction;
-      if (!text || text === "undefined") {
-        text = step.name ? `Proceed onto ${step.name}` : "Proceed along Shadow Vector";
-      }
-      
-      document.getElementById('turn-icon').innerText = icon;
-      document.getElementById('turn-instruction').innerText = text;
-      
-      let distStr = step.distance > 1609.34 ? (step.distance * 0.000621371).toFixed(1) + " mi" : Math.round(step.distance * 3.28084) + " ft";
-      document.getElementById('turn-distance').innerText = "In " + distStr;
-    }
+    function startRadarWatch(){if(!('geolocation'in navigator)){showHudModal('GPS Required','This device does not expose geolocation to GhostLane.',{tone:'danger'});return false}if(radarWatchId!==null)return true;radarWatchId=navigator.geolocation.watchPosition(updateFromPosition,err=>{stopRadarWatch();isRadarActive=false;updateRadarButton();showHudModal('GPS Signal Unavailable',err.message||'GhostLane could not obtain a live GPS fix.',{tone:'danger'})},{enableHighAccuracy:true,maximumAge:1000,timeout:12000});return true}
+    function stopRadarWatch(){if(radarWatchId!==null&&'geolocation'in navigator)navigator.geolocation.clearWatch(radarWatchId);radarWatchId=null}
+    function updateRadarButton(){const btn=document.getElementById('radar-toggle-btn'),text=document.getElementById('radar-btn-text');if(isRadarActive){btn.classList.add('active');text.innerText='RADAR ACTIVE'}else{btn.classList.remove('active');text.innerText='START RADAR'}}
+    function toggleRadarMode(){if(isRadarActive){isRadarActive=false;stopRadarWatch();updateRadarButton();showHudToast('Radar monitoring paused.');return}if(!startRadarWatch())return;isRadarActive=true;updateRadarButton();playPing(880,'sine',.2);showHudToast('Live radar monitoring active.')}
 
-    // Live Geolocation Tracking
-    if ("geolocation" in navigator) {
-      navigator.geolocation.watchPosition(
-        (pos) => {
-          userCoords = [pos.coords.latitude, pos.coords.longitude];
-          userMarker.setLatLng(userCoords);
+    function requestCurrentPosition({center=false,silent=false}={}){if(!('geolocation'in navigator)){if(!silent)showHudModal('GPS Required','This device does not expose geolocation to GhostLane.',{tone:'danger'});return}navigator.geolocation.getCurrentPosition(pos=>{updateFromPosition(pos);if(center){map.setView(userCoords,16,{animate:true});playPing(1100,'sine',.1)}},err=>{if(!silent)showHudModal('Current Location Unavailable',err.message||'GhostLane could not obtain your current location.',{tone:'danger'})},{enableHighAccuracy:true,maximumAge:1500,timeout:10000})}
+    function centerCurrentLocation(){requestCurrentPosition({center:true})}
+    function focusNearestNode(){if(!hasLiveGpsFix){showHudToast('Getting GPS fix before targeting nearest node…');requestCurrentPosition({center:false});return}if(!cameraLocations.length)return;let nearest=cameraLocations[0],min=Infinity;cameraLocations.forEach(cam=>{const d=map.distance(userCoords,[cam.lat,cam.lng]);if(d<min){min=d;nearest=cam}});map.setView([nearest.lat,nearest.lng],16,{animate:true});showHudToast(`Targeting nearest node • ${Math.round(min*3.28084)} ft`);playPing(1040,'sine',.1)}
+    requestCurrentPosition({center:false,silent:true});
 
-          let speed = pos.coords.speed && pos.coords.speed > 0 ? Math.round(pos.coords.speed * 2.23694) : 0;
-          document.getElementById('stat-speed').innerHTML = `${speed} <span style="font-size:0.65rem;">MPH</span>`;
+    function switchTab(tabId){document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));document.getElementById(`tab-${tabId}`).classList.add('active');logNodeMode=(tabId==='log');if(tabId==='radar'){closeSearch();map.closePopup();map.invalidateSize();showHudToast(isRadarActive?'Radar view active • live monitoring is ON':'Radar view ready • tap START RADAR for live monitoring')}else if(tabId==='ledger')showHudModal('Surveillance Ledger',`${cameraLocations.length} optical traps currently cataloged.`);else if(tabId==='log')showHudToast('LOG NODE MODE • Tap anywhere on the map to place a node.','orange')}
 
-          if (pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
-            const h = Math.round(pos.coords.heading);
-            document.getElementById('stat-heading').innerHTML = `${h}° <span style="font-size:0.65rem;">N</span>`;
-            const arrow = document.getElementById('user-arrow');
-            if (arrow) arrow.style.transform = `rotate(${h}deg)`;
-          }
-
-          if (isRadarActive) {
-            cameraLocations.forEach(cam => {
-              if (map.distance(userCoords, [cam.lat, cam.lng]) < 180) { 
-                playPing(440, 'sawtooth', 0.15);
-              }
-            });
-          }
-
-          if (routeSteps.length > 0 && currentStepIdx < routeSteps.length) {
-            let nextManeuver = routeSteps[currentStepIdx].maneuver.location; 
-            let distToTurn = map.distance(userCoords, [nextManeuver[1], nextManeuver[0]]);
-            
-            let distStr = distToTurn > 1609.34 ? (distToTurn * 0.000621371).toFixed(1) + " mi" : Math.round(distToTurn * 3.28084) + " ft";
-            document.getElementById('turn-distance').innerText = "In " + distStr;
-
-            if (distToTurn < 40) { 
-              currentStepIdx++;
-              if (currentStepIdx < routeSteps.length) {
-                updateTurnHUD(routeSteps[currentStepIdx]);
-                const stepText = routeSteps[currentStepIdx].maneuver.instruction || `Turn onto ${routeSteps[currentStepIdx].name || 'route'}`;
-                speakAlert(stepText);
-              } else {
-                speakAlert("Target destination reached. Zero trace confirmed.");
-                document.getElementById('turn-hud').style.display = 'none';
-                routeSteps = [];
-              }
-            }
-          }
-        },
-        (err) => console.log("GPS Location unavailable:", err.message),
-        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
-      );
-    }
-
-    function toggleRadarMode() {
-      isRadarActive = !isRadarActive;
-      const btn = document.getElementById('radar-toggle-btn');
-      const text = document.getElementById('radar-btn-text');
-
-      if (isRadarActive) {
-        btn.classList.add('active');
-        text.innerText = "RADAR ACTIVE";
-        playPing(880, 'sine', 0.2);
-      } else {
-        btn.classList.remove('active');
-        text.innerText = "START RADAR";
-      }
-    }
-
-    function centerVehicleLocation() {
-      if (userMarker) {
-        map.panTo(userCoords, { animate: true, duration: 0.5 });
-        map.setZoom(13);
-        playPing(1100, 'sine', 0.1);
-      }
-    }
-
-    function switchTab(tabId) {
-      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-      document.getElementById(`tab-${tabId}`).classList.add('active');
-
-      logNodeMode = (tabId === 'log');
-
-      if (tabId === 'ledger') {
-        alert(`Surveillance Ledger: ${cameraLocations.length} optical traps currently cataloged.`);
-      } else if (tabId === 'log') {
-        alert("Log Node Mode: Tap anywhere on the map to log a node.");
-      }
-    }
-
-    // Manual Node Logging with Background Cloud Push
-    map.on('click', async function(e) {
-      if (logNodeMode) {
-        const newNode = {
-          lat: e.latlng.lat,
-          lng: e.latlng.lng,
-          id: `MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
-          heading: 0,
-          label: 'User Logged Trap'
-        };
-
-        cameraLocations.push(newNode);
-        try {
-          const stored = JSON.parse(localStorage.getItem('gl_manual_nodes') || '[]');
-          stored.push(newNode);
-          localStorage.setItem('gl_manual_nodes', JSON.stringify(stored));
-        } catch(err) {}
-
-        renderCameras();
-        playPing(800, 'square', 0.12);
-        alert("Optical node logged to mesh!");
-
-        if (_supabase) {
-          try {
-            await _supabase.from('cameras').insert([{
-              lat: newNode.lat,
-              lng: newNode.lng,
-              node_id: newNode.id,
-              heading: newNode.heading,
-              label: newNode.label
-            }]);
-          } catch (err) {
-            console.warn("Cloud push ignored:", err);
-          }
-        }
-      }
-    });
+    map.on('click',async function(e){if(logNodeMode){const newNode={lat:e.latlng.lat,lng:e.latlng.lng,id:`MANUAL-${Math.floor(1000+Math.random()*9000)}`,heading:0,label:'User Logged Trap'};newNode._manual=true;cameraLocations.push(newNode);try{const stored=JSON.parse(localStorage.getItem('gl_manual_nodes')||'[]');stored.push(newNode);localStorage.setItem('gl_manual_nodes',JSON.stringify(stored))}catch(err){}renderCameras();playPing(800,'square',.12);showHudToast('Optical node logged to mesh.','orange');if(_supabase){try{const{error}=await _supabase.from('cameras').insert([{lat:newNode.lat,lng:newNode.lng,node_id:newNode.id,heading:newNode.heading,label:newNode.label}]);if(error)throw error;newNode._cloud=true}catch(err){console.warn('Cloud push failed:',err);showHudToast('Node saved locally • cloud sync failed.','danger')}}}});
   </script>
 </body>
 </html>

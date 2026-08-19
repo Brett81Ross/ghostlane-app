@@ -40,72 +40,88 @@
 
     async function startImport() {
       importBtn.disabled = true;
-      printLog("Bypassing CORS browser blocks using a JSON-wrapped proxy...");
+      printLog("Deploying mirror routing to bypass device security filters...");
 
       const query = `[out:json][timeout:30];node["man_made"="surveillance"]["surveillance:type"~"ALPR|automatic_number_plate_recognition"](33.5,-103.0,37.0,-94.0);out body;`;
-      const overpassUrl = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
-      
-      // Using /get instead of /raw to ensure Cloudflare doesn't block it with HTML
-      const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(overpassUrl);
+      const bodyData = "data=" + encodeURIComponent(query);
 
-      try {
-        const response = await fetch(proxyUrl);
+      // Fault-tolerant array of core OpenStreetMap backends
+      const mirrors = [
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://overpass-api.de/api/interpreter"
+      ];
+
+      let data = null;
+
+      // Waterfall Routing: Tries each server until one lets the connection through
+      for (let i = 0; i < mirrors.length; i++) {
+        printLog(`Dialing OpenStreetMap Server Mirror ${i + 1}...`);
         
-        if (!response.ok) {
-           throw new Error("Proxy server connection failed.");
-        }
+        try {
+          const response = await fetch(mirrors[i], {
+            method: "POST",
+            body: bodyData,
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded"
+            }
+          });
 
-        const proxyData = await response.json();
-
-        if (!proxyData.contents) {
-           throw new Error("Proxy returned empty envelope. Target server may be down.");
-        }
-
-        printLog("Envelope received. Unpacking DeFlock coordinates...");
-        
-        // Parse the text inside the envelope back into usable data
-        const data = JSON.parse(proxyData.contents);
-        const nodes = data.elements || [];
-        printLog(`SUCCESS: Located ${nodes.length} real ALPR cameras.`);
-
-        if (nodes.length === 0) {
-          printLog("No cameras found. Terminating protocol.");
-          importBtn.disabled = false;
-          return;
-        }
-
-        printLog("Formatting target data for Cloud Mesh...");
-        
-        const insertData = nodes.map(n => ({
-          lat: n.lat,
-          lng: n.lon,
-          node_id: `DEFLOCK-${n.id}`,
-          heading: (n.tags && n.tags["camera:direction"]) ? parseInt(n.tags["camera:direction"]) : 0,
-          label: (n.tags && n.tags.operator) ? n.tags.operator : 'DeFlock ALPR'
-        }));
-
-        printLog("Initiating bulk push to Supabase in batches of 50...");
-
-        let successCount = 0;
-        for (let i = 0; i < insertData.length; i += 50) {
-          const batch = insertData.slice(i, i + 50);
-          const { error } = await _supabase.from('cameras').insert(batch);
-          
-          if (error) {
-            printLog(`ERROR on batch: ${error.message}`);
+          if (response.ok) {
+            data = await response.json();
+            printLog(`SUCCESS: Network connection established on Mirror ${i + 1}.`);
+            break; // Immediately stops the loop once data is secured
           } else {
-            successCount += batch.length;
-            printLog(`Pushing... ${successCount} nodes secured.`);
+             printLog(`Mirror ${i + 1} locked down by server. Rerouting...`);
           }
+        } catch (err) {
+          printLog(`Mirror ${i + 1} blocked by your browser. Rerouting...`);
         }
-
-        printLog("EXTRACTION COMPLETE! Your GhostLane app is now loaded with real data.");
-        printLog("You can safely close this page and open your main GhostLane app.");
-
-      } catch (err) {
-        printLog(`CRITICAL ERROR: ${err.message}`);
-        importBtn.disabled = false;
       }
+
+      // If all three mirrors get assassinated by the device
+      if (!data || !data.elements) {
+        printLog("CRITICAL ERROR: Your device network is aggressively blocking all external traffic.");
+        importBtn.disabled = false;
+        return;
+      }
+
+      const nodes = data.elements || [];
+      printLog(`SUCCESS: Located ${nodes.length} real ALPR cameras.`);
+
+      if (nodes.length === 0) {
+        printLog("No cameras found in sector. Terminating protocol.");
+        importBtn.disabled = false;
+        return;
+      }
+
+      printLog("Formatting target data for Cloud Mesh...");
+      
+      const insertData = nodes.map(n => ({
+        lat: n.lat,
+        lng: n.lon,
+        node_id: `DEFLOCK-${n.id}`,
+        heading: (n.tags && n.tags["camera:direction"]) ? parseInt(n.tags["camera:direction"]) : 0,
+        label: (n.tags && n.tags.operator) ? n.tags.operator : 'DeFlock ALPR'
+      }));
+
+      printLog("Initiating bulk push to Supabase in batches of 50...");
+
+      let successCount = 0;
+      for (let i = 0; i < insertData.length; i += 50) {
+        const batch = insertData.slice(i, i + 50);
+        const { error } = await _supabase.from('cameras').insert(batch);
+        
+        if (error) {
+          printLog(`ERROR on batch: ${error.message}`);
+        } else {
+          successCount += batch.length;
+          printLog(`Pushing... ${successCount} nodes secured.`);
+        }
+      }
+
+      printLog("EXTRACTION COMPLETE! Your GhostLane app is now loaded with real data.");
+      printLog("You can safely close this page and open your main GhostLane app.");
     }
   </script>
 </body>

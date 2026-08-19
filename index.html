@@ -11,6 +11,8 @@
   <!-- Leaflet Map CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Supabase JS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
     * {
@@ -538,39 +540,330 @@
     userMarker = L.marker(userCoords, { icon: puckIcon, zIndexOffset: 1000 }).addTo(map);
 
     // Camera Generation Logic with Directional Headings
-    let cameraLocations = JSON.parse(localStorage.getItem('ghostlane_nodes_v2')) || [];
-    
-    if (cameraLocations.length === 0) {
+      <script>
+    // Supabase Cloud Configuration
+    const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Audio Context for Radar Pings
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playPing(freq = 920, type = 'sine', duration = 0.1) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    // Text-to-Speech Engine
+    const synth = window.speechSynthesis;
+    function speakAlert(text) {
+      if (synth.speaking) synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      synth.speak(utterance);
+    }
+
+    // State Variables
+    let userCoords = [35.4676, -97.5164];
+    let isRadarActive = false;
+    let logNodeMode = false;
+    let userMarker = null;
+    let routePolyline = null;
+    let routeSteps = [];
+    let currentStepIdx = 0;
+
+    // Initialize Map
+    const map = L.map('map', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([35.4676, -97.5164], 11);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd'
+    }).addTo(map);
+
+    const floatControls = document.getElementById('floating-ctrls');
+    if (floatControls) {
+      L.DomEvent.disableClickPropagation(floatControls);
+      L.DomEvent.disableScrollPropagation(floatControls);
+    }
+
+    // User Location Puck
+    const puckIcon = L.divIcon({
+      className: 'user-puck-wrapper',
+      html: '<div class="user-arrow-puck" id="user-arrow"></div>',
+      iconSize: [20, 20]
+    });
+    userMarker = L.marker(userCoords, { icon: puckIcon, zIndexOffset: 1000 }).addTo(map);
+
+    // Directional SVG Cone Generator (60 Degree FOV)
+    const getConeHtml = (heading) => `
+      <div style="width: 60px; height: 60px; transform: rotate(${heading}deg); transform-origin: center;">
+        <svg width="60" height="60" viewBox="0 0 60 60">
+          <path d="M 30 30 L 17.5 8.35 A 25 25 0 0 1 42.5 8.35 Z" fill="rgba(239, 68, 68, 0.25)" stroke="#ef4444" stroke-width="1.5" />
+          <circle cx="30" cy="30" r="4" fill="#ffffff" stroke="#ef4444" stroke-width="2" style="filter: drop-shadow(0 0 6px #ef4444)" />
+        </svg>
+      </div>
+    `;
+
+    let cameraLocations = [];
+    const cameraLayerGroup = L.layerGroup().addTo(map);
+
+    function renderCameras() {
+      cameraLayerGroup.clearLayers();
+      cameraLocations.forEach(cam => {
+        const icon = L.divIcon({
+          className: 'custom-cone-icon',
+          html: getConeHtml(cam.heading || 0),
+          iconSize: [60, 60],
+          iconAnchor: [30, 30],
+          popupAnchor: [0, -10]
+        });
+
+        L.marker([cam.lat, cam.lng], { icon: icon })
+         .bindPopup(`<b>${cam.node_id || cam.id || 'ALPR Node'}</b><br><span style="color:#ef4444;font-weight:bold;">${cam.label || 'Optical Trap'}</span>`)
+         .addTo(cameraLayerGroup);
+      });
+      document.getElementById('stat-cameras').innerText = cameraLocations.length;
+    }
+
+    // Fetch Cameras from Supabase Cloud
+    async function loadCloudCameras() {
+      try {
+        const { data, error } = await _supabase.from('cameras').select('*');
+        if (error) throw error;
+        if (data && data.length > 0) {
+          cameraLocations = data;
+          renderCameras();
+        } else {
+          // Fallback initial population if table is empty
+          seedInitialCameras();
+        }
+      } catch (err) {
+        console.error("Cloud sync load error:", err);
+      }
+    }
+
+    async function seedInitialCameras() {
       const basePoints = [
         { lat: 35.4676, lng: -97.5164, count: 48, spread: 0.055 }, 
         { lat: 35.5053, lng: -97.6406, count: 26, spread: 0.035 }, 
         { lat: 35.4495, lng: -97.3967, count: 28, spread: 0.038 }, 
         { lat: 35.3395, lng: -97.4867, count: 32, spread: 0.032 }  
       ];
-
-      const headings = [
-        { h: 0, l: 'Northbound' }, { h: 45, l: 'Northeast' }, { h: 90, l: 'Eastbound' }, 
-        { h: 135, l: 'Southeast' }, { h: 180, l: 'Southbound' }, { h: 225, l: 'Southwest' }, 
-        { h: 270, l: 'Westbound' }, { h: 315, l: 'Northwest' }
-      ];
-
-      basePoints.forEach(bp => {
+      const headings = [0, 45, 90, 135, 180, 225, 270, 315];
+      
+      for (let bp of basePoints) {
         for (let i = 0; i < bp.count; i++) {
-          const offsetLat = (Math.random() - 0.5) * bp.spread * 2;
-          const offsetLng = (Math.random() - 0.5) * bp.spread * 2;
-          const dir = headings[Math.floor(Math.random() * headings.length)];
-          
-          cameraLocations.push({
-            lat: bp.lat + offsetLat,
-            lng: bp.lng + offsetLng,
-            id: `ALPR-${Math.floor(1000 + Math.random() * 9000)}`,
-            heading: dir.h,
-            label: dir.l
-          });
+          const newCam = {
+            lat: bp.lat + (Math.random() - 0.5) * bp.spread * 2,
+            lng: bp.lng + (Math.random() - 0.5) * bp.spread * 2,
+            node_id: `ALPR-${Math.floor(1000 + Math.random() * 9000)}`,
+            heading: headings[Math.floor(Math.random() * headings.length)],
+            label: 'Optical Trap'
+          };
+          await _supabase.from('cameras').insert([newCam]);
         }
-      });
-      localStorage.setItem('ghostlane_nodes_v2', JSON.stringify(cameraLocations));
+      }
+      loadCloudCameras();
     }
+
+    // Load nodes on start
+    loadCloudCameras();
+
+    // Shadow Route Search Modal Logic
+    function openSearch() {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-shadow').classList.add('active');
+      document.getElementById('search-modal').style.display = 'flex';
+      playPing(1000, 'sine', 0.1);
+    }
+
+    function closeSearch() {
+      document.getElementById('search-modal').style.display = 'none';
+    }
+
+    async function executeSearch() {
+      const query = document.getElementById('dest-address').value;
+      if (!query) return;
+      closeSearch();
+      speakAlert("Calculating zero trace evasion vectors.");
+
+      const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+      try {
+        const res = await fetch(nomUrl);
+        const data = await res.json();
+        
+        if (data.length > 0) {
+          let destCoords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+          let start = `${userCoords[1]},${userCoords[0]}`;
+          let end = `${destCoords[1]},${destCoords[0]}`;
+          let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;
+          
+          const oRes = await fetch(osrmUrl);
+          const oData = await oRes.json();
+
+          if (oData.routes && oData.routes.length > 0) {
+            if (routePolyline) map.removeLayer(routePolyline);
+            
+            let coords = oData.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
+            routePolyline = L.polyline(coords, { color: '#38bdf8', weight: 6, dashArray: '8, 8' }).addTo(map);
+            map.fitBounds(routePolyline.getBounds(), { padding: [60, 60] });
+
+            routeSteps = oData.routes[0].legs[0].steps;
+            currentStepIdx = 0;
+            
+            document.getElementById('turn-hud').style.display = 'flex';
+            updateTurnHUD(routeSteps[currentStepIdx]);
+            speakAlert("Shadow route acquired. " + routeSteps[currentStepIdx].maneuver.instruction);
+          }
+        } else {
+          speakAlert("Target destination not found.");
+        }
+      } catch (err) {
+        console.error(err);
+        speakAlert("Routing network error.");
+      }
+    }
+
+    function updateTurnHUD(step) {
+      const modifier = step.maneuver.modifier || '';
+      let icon = '⬆';
+      if (modifier.includes('right')) icon = '↱';
+      if (modifier.includes('left')) icon = '↰';
+      if (modifier.includes('uturn')) icon = '↻';
+      
+      document.getElementById('turn-icon').innerText = icon;
+      document.getElementById('turn-instruction').innerText = step.maneuver.instruction;
+      
+      let distStr = step.distance > 1609.34 ? (step.distance * 0.000621371).toFixed(1) + " mi" : Math.round(step.distance * 3.28084) + " ft";
+      document.getElementById('turn-distance').innerText = "In " + distStr;
+    }
+
+    // Live Geolocation Tracking
+    if ("geolocation" in navigator) {
+      navigator.geolocation.watchPosition(
+        (pos) => {
+          userCoords = [pos.coords.latitude, pos.coords.longitude];
+          userMarker.setLatLng(userCoords);
+
+          let speed = pos.coords.speed && pos.coords.speed > 0 ? Math.round(pos.coords.speed * 2.23694) : 0;
+          document.getElementById('stat-speed').innerHTML = `${speed} <span style="font-size:0.65rem;">MPH</span>`;
+
+          if (pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+            const h = Math.round(pos.coords.heading);
+            document.getElementById('stat-heading').innerHTML = `${h}° <span style="font-size:0.65rem;">N</span>`;
+            const arrow = document.getElementById('user-arrow');
+            if (arrow) arrow.style.transform = `rotate(${h}deg)`;
+          }
+
+          if (isRadarActive) {
+            cameraLocations.forEach(cam => {
+              if (map.distance(userCoords, [cam.lat, cam.lng]) < 180) { 
+                playPing(440, 'sawtooth', 0.15);
+              }
+            });
+          }
+
+          if (routeSteps.length > 0 && currentStepIdx < routeSteps.length) {
+            let nextManeuver = routeSteps[currentStepIdx].maneuver.location; 
+            let distToTurn = map.distance(userCoords, [nextManeuver[1], nextManeuver[0]]);
+            
+            let distStr = distToTurn > 1609.34 ? (distToTurn * 0.000621371).toFixed(1) + " mi" : Math.round(distToTurn * 3.28084) + " ft";
+            document.getElementById('turn-distance').innerText = "In " + distStr;
+
+            if (distToTurn < 40) { 
+              currentStepIdx++;
+              if (currentStepIdx < routeSteps.length) {
+                updateTurnHUD(routeSteps[currentStepIdx]);
+                speakAlert(routeSteps[currentStepIdx].maneuver.instruction);
+              } else {
+                speakAlert("Target destination reached. Zero trace confirmed.");
+                document.getElementById('turn-hud').style.display = 'none';
+                routeSteps = [];
+              }
+            }
+          }
+        },
+        (err) => console.log("GPS Location unavailable:", err.message),
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      );
+    }
+
+    function toggleRadarMode() {
+      isRadarActive = !isRadarActive;
+      const btn = document.getElementById('radar-toggle-btn');
+      const text = document.getElementById('radar-btn-text');
+
+      if (isRadarActive) {
+        btn.classList.add('active');
+        text.innerText = "RADAR ACTIVE";
+        playPing(880, 'sine', 0.2);
+      } else {
+        btn.classList.remove('active');
+        text.innerText = "START RADAR";
+      }
+    }
+
+    function centerVehicleLocation() {
+      if (userMarker) {
+        map.panTo(userCoords, { animate: true, duration: 0.5 });
+        map.setZoom(13);
+        playPing(1100, 'sine', 0.1);
+      }
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+
+      logNodeMode = (tabId === 'log');
+
+      if (tabId === 'ledger') {
+        alert(`Surveillance Ledger: ${cameraLocations.length} optical traps currently cataloged in Cloud Mesh.`);
+      } else if (tabId === 'log') {
+        alert("Log Node Mode: Tap anywhere on the map to log a node to the live cloud network.");
+      }
+    }
+
+    // Manual Cloud-Synced Node Logging
+    map.on('click', async function(e) {
+      if (logNodeMode) {
+        const newNode = {
+          lat: e.latlng.lat,
+          lng: e.latlng.lng,
+          node_id: `MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
+          heading: 0,
+          label: 'User Logged Trap'
+        };
+
+        // Push to Supabase Cloud Database
+        const { error } = await _supabase.from('cameras').insert([newNode]);
+        if (!error) {
+          cameraLocations.push(newNode);
+          renderCameras();
+          playPing(800, 'square', 0.12);
+          alert("Optical node successfully broadcast to live cloud mesh!");
+        } else {
+          alert("Error syncing node to cloud.");
+        }
+      }
+    });
+  </script>
 
     // Directional SVG Cone Generator (60 Degree FOV)
     const getConeHtml = (heading) => `

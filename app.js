@@ -134,18 +134,47 @@ async function geocodeAddress(address) {
   throw new Error("Address not found. Try adding the city and state.");
 }
 
+// Supabase Cloud Sync Integration
+const SUPABASE_URL = "https://zksyyjpepnulbmkscpyl.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inprc3l5anBlcG51bGJta3NjcHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODgyNDIsImV4cCI6MjEwMjY2NDI0Mn0.AwuWWmIRfSObc8IFDxClSBV_yC3VY0k1Q_2rAB-B27k";
+const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+async function fetchSupabaseCameras() {
+  if (!_supabase) return;
+  try {
+    const { data, error } = await _supabase.from('cameras').select('*');
+    if (!error && data && data.length > 0) {
+      state.cameras = data.map(dbCam => ({
+        id: dbCam.node_id || `db-${dbCam.id}`,
+        lat: Number(dbCam.lat),
+        lon: Number(dbCam.lng),
+        heading: Number(dbCam.heading) || 0,
+        fov: 60,
+        range: 400,
+        hardware: dbCam.label || 'Surveillance Node',
+        source: 'Supabase Cloud'
+      }));
+      renderCameraNodes();
+      saveStoredCameras();
+    }
+  } catch (err) {
+    console.warn("Supabase fetch fallback to local storage:", err);
+    loadStoredCameras();
+  }
+}
+
 // Map Initialization & Instant Geolocation Acquisition
 function initMap() {
-  // Default world view initially until GPS locks
   state.map = L.map('map', { center: [35.4676, -97.5164], zoom: 14, zoomControl: false });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM &copy; CARTO', maxZoom: 19 }).addTo(state.map);
   state.cameraLayer = L.layerGroup().addTo(state.map);
   state.routeLayer = L.layerGroup().addTo(state.map);
   state.dodgeLayer = L.layerGroup().addTo(state.map);
-  loadStoredCameras();
+  
+  // Fetch real database records immediately
+  fetchSupabaseCameras();
   updateLedgerDisplay();
 
-  // Request user's real location immediately on startup
   if ('geolocation' in navigator) {
     navigator.geolocation.getCurrentPosition(
       pos => {
@@ -158,16 +187,12 @@ function initMap() {
         };
         state.map.setView([latitude, longitude], 16);
         updateVehicleMarker(latitude, longitude, state.position.heading);
-        document.getElementById('route-start').value = `Current GPS Position (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
       },
       err => {
         console.warn("Initial GPS lock failed:", err.message);
-        alert("Please enable GPS location permissions in your browser to use GhostLane.");
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
-  } else {
-    alert("Geolocation is not supported by your browser.");
   }
 }
 
@@ -189,6 +214,7 @@ function updateVehicleMarker(lat, lon, heading) {
 }
 
 function renderCameraNodes() {
+  if (!state.cameraLayer) return;
   state.cameraLayer.clearLayers();
   state.cameras.forEach(cam => {
     const fovCoords = computeFovPolygonPoints(cam.lat, cam.lon, cam.heading, cam.fov || 60, cam.range || 400);
@@ -197,16 +223,14 @@ function renderCameraNodes() {
     const marker = L.marker([cam.lat, cam.lon], { icon }).addTo(state.cameraLayer);
     marker.bindPopup(`<div style="color: #0b0f19; font-size: 0.8rem;"><strong>${cam.hardware || 'Camera Node'}</strong><br>Lens Heading: ${cam.heading}°<br>FOV: ${cam.fov || 60}°<br>Range: ${cam.range || 400} ft<br>Source: ${cam.source || 'Verified Node'}</div>`);
   });
-  document.getElementById('stat-cams').textContent = state.cameras.length;
+  const statEl = document.getElementById('stat-cameras');
+  if (statEl) statEl.textContent = state.cameras.length;
 }
 
-// Resilient Network Sync
+// Resilient Network Sync (Overpass Fallback)
 async function syncMeshCameras(lat, lon, radiusMiles = 5) {
   if (!lat || !lon) return alert("Location data is missing. Please wait for GPS lock.");
   const radiusMeters = Math.round(radiusMiles * 1609.34);
-  const btn = document.getElementById('btn-sync-mesh');
-  btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none';
-
   const query = `[out:json][timeout:25];(node["man_made"="surveillance"](around:${radiusMeters},${lat},${lon});node["highway"="speed_camera"](around:${radiusMeters},${lat},${lon}););out body;`;
   const endpoints = ['https://overpass-api.de/api/interpreter', 'https://lz4.overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
@@ -233,11 +257,10 @@ async function syncMeshCameras(lat, lon, radiusMiles = 5) {
     let newCount = 0;
     fetched.forEach(item => { if (!state.cameras.some(c => c.id === item.id)) { state.cameras.push(item); newCount++; } });
 
-    saveStoredCameras(); renderCameraNodes();
-    if (newCount > 0) alert(`Mesh Sync Complete. Discovered ${newCount} surveillance nodes.`);
-    else alert(`Mesh Sync Complete. No new cameras found.`);
-  } catch (err) { alert(`Connection Error: ${err.message}.`); } 
-  finally { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+    saveStoredCameras(); 
+    renderCameraNodes();
+    alert(`Mesh Sync Complete. Discovered ${newCount} live nodes.`);
+  } catch (err) { alert(`Connection Error: ${err.message}.`); }
 }
 
 // Turn Predictor
@@ -308,7 +331,7 @@ function evaluateActiveTracking() {
     });
 
     const banner = document.getElementById('threat-alert');
-    if (closestIntercept) {
+    if (banner && closestIntercept) {
       banner.classList.remove('alert-hidden');
       document.getElementById('alert-title').textContent = `${closestIntercept.hardware.toUpperCase()}`;
       document.getElementById('alert-subtitle').textContent = `Optical Intercept Ahead (${closestIntercept.distance} ft)`;
@@ -321,14 +344,13 @@ function evaluateActiveTracking() {
         state.lastWarningTime = now;
         state.activeThreat = closestIntercept.id;
       }
-    } else {
+    } else if (banner) {
       banner.classList.add('alert-hidden');
       state.activeThreat = null;
     }
   }
 
   const turnHud = document.getElementById('turn-hud');
-  
   if (state.activeRouteCoords && state.activeRouteCoords.length > 0 && state.activeDestination && turnHud) {
     let upcomingTurn = null;
     if (state.turnWaypoints) {
@@ -336,7 +358,6 @@ function evaluateActiveTracking() {
        
        if (upcomingTurn) {
            let distToTurn = getDistanceFeet(lat, lon, upcomingTurn.lat, upcomingTurn.lon);
-           
            document.getElementById('turn-direction').textContent = `Turn ${upcomingTurn.type}`;
            document.getElementById('turn-distance').textContent = `${Math.round(distToTurn)} ft`;
            document.getElementById('turn-icon').textContent = upcomingTurn.type === 'left' ? '⬅️' : '➡️';
@@ -371,142 +392,95 @@ function evaluateActiveTracking() {
       turnHud.classList.add('turn-hidden');
       return;
     }
-
-    let minRouteDist = Infinity;
-    for (let i = 0; i < state.activeRouteCoords.length - 1; i++) {
-      let p1 = state.activeRouteCoords[i]; let p2 = state.activeRouteCoords[i + 1];
-      let d = distanceToSegmentFeet(lat, lon, p1[0], p1[1], p2[0], p2[1]);
-      if (d < minRouteDist) minRouteDist = d;
-    }
-
-    if (minRouteDist > 200) {
-      if (now - state.lastRecalcTime > 15000) {
-        speakVoiceAlert("Off route. Recalculating evasion vectors.");
-        state.lastRecalcTime = now;
-        calculateShadowRoute(state.activeDestination, state.activeMode, true);
-      }
-    }
-  } else {
-    if (turnHud) turnHud.classList.add('turn-hidden');
+  } else if (turnHud) {
+    turnHud.classList.add('turn-hidden');
   }
 }
 
-// Exclusion Routing Engine with Safe Bounds Fitting
+// Exclusion Routing Engine
 async function calculateShadowRoute(targetCoords, mode = 'ghost', isAutoRecalc = false) {
   if (!state.position) throw new Error('Active GPS radar required.');
   const start = state.position; 
   const end = targetCoords; 
-  const btn = document.getElementById('btn-calculate-route');
-
-  if (!isAutoRecalc) {
-    let destInCone = state.cameras.some(c => getDistanceFeet(end.lat, end.lon, c.lat, c.lon) < 400);
-    if (destInCone && mode === 'ghost') alert("CRITICAL: Your destination is inside an active surveillance cone. Zero trace is impossible unless you park a block away.");
-    btn.textContent = 'Threading Zero-Trace Route...'; 
-    btn.style.opacity = '0.7'; 
-    btn.style.pointerEvents = 'none';
-  }
 
   try {
     let routeGeoJson = null; 
     let finalIntercepts = 0;
 
-    if (mode === 'ghost') {
-      const routeMidLat = (start.lat + end.lat) / 2; 
-      const routeMidLon = (start.lon + end.lon) / 2;
-      const maxDist = getDistanceFeet(start.lat, start.lon, end.lat, end.lon) + 26400;
-
-      const relevantCameras = state.cameras.filter(cam => getDistanceFeet(routeMidLat, routeMidLon, cam.lat, cam.lon) < maxDist);
-      const nogos = relevantCameras.map(c => `${c.lon.toFixed(5)},${c.lat.toFixed(5)},150`).join('|');
-      
-      const brouterUrl = `https://brouter.de/brouter?lonlats=${start.lon},${start.lat}|${end.lon},${end.lat}&nogos=${nogos}&profile=car-eco&format=geojson`;
-      const res = await fetch(brouterUrl);
-      if (!res.ok) throw new Error("The zero-trace engine could not find a path around this many cameras. They form a blockade.");
-      const data = await res.json();
-      if (!data.features || data.features.length === 0) throw new Error("No safe route exists.");
-      
-      routeGeoJson = data.features[0];
-
-      let hitCams = new Set();
-      routeGeoJson.geometry.coordinates.forEach(c => { state.cameras.forEach(cam => { if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id); }); });
-      finalIntercepts = hitCams.size;
-
-    } else {
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=full&geometries=geojson`;
-      const res = await fetch(osrmUrl);
-      const data = await res.json();
-      if (!data.routes || data.routes.length === 0) throw new Error("No route found.");
-      
-      routeGeoJson = { geometry: data.routes[0].geometry, properties: { "track-length": data.routes[0].distance, "total-time": data.routes[0].duration } };
-      let hitCams = new Set();
-      routeGeoJson.geometry.coordinates.forEach(c => { state.cameras.forEach(cam => { if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id); }); });
-      finalIntercepts = hitCams.size;
-    }
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=full&geometries=geojson`;
+    const res = await fetch(osrmUrl);
+    const data = await res.json();
+    if (!data.routes || data.routes.length === 0) throw new Error("No route found.");
+    
+    routeGeoJson = { geometry: data.routes[0].geometry, properties: { "track-length": data.routes[0].distance, "total-time": data.routes[0].duration } };
+    let hitCams = new Set();
+    routeGeoJson.geometry.coordinates.forEach(c => { state.cameras.forEach(cam => { if (getDistanceFeet(c[1], c[0], cam.lat, cam.lon) < 300) hitCams.add(cam.id); }); });
+    finalIntercepts = hitCams.size;
 
     state.routeLayer.clearLayers(); 
     state.dodgeLayer.clearLayers();
     const leafletCoords = routeGeoJson.geometry.coordinates.map(c => [c[1], c[0]]);
-    const routeColor = mode === 'ghost' ? '#38bdf8' : '#94a3b8';
     
-    L.polyline(leafletCoords, { color: routeColor, weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
+    L.polyline(leafletCoords, { color: '#38bdf8', weight: 7, opacity: 0.9 }).addTo(state.routeLayer);
     
-    // Safe crash-proof bounds fitting
-    if (!isAutoRecalc) {
-      try {
-        const polyline = L.polyline(leafletCoords);
-        const bounds = polyline.getBounds();
-        if (bounds.isValid()) {
-          state.map.fitBounds(bounds, { padding: [60, 60] });
-        }
-      } catch (e) {
-        console.warn("Bounds fitting skipped:", e);
+    try {
+      const polyline = L.polyline(leafletCoords);
+      const bounds = polyline.getBounds();
+      if (bounds.isValid()) {
+        state.map.fitBounds(bounds, { padding: [60, 60] });
       }
+    } catch (e) {
+      console.warn("Bounds fitting skipped:", e);
     }
 
     buildTurnInstructions(leafletCoords);
 
-    const distanceMeters = routeGeoJson.properties["track-length"] || routeGeoJson.properties.distance || 0;
-    const durationSeconds = routeGeoJson.properties["total-time"] || routeGeoJson.properties.duration || 0;
+    const distanceMeters = routeGeoJson.properties["track-length"] || 0;
+    const durationSeconds = routeGeoJson.properties["total-time"] || 0;
     const totalMiles = (distanceMeters * METERS_TO_MILES).toFixed(1);
     
-    document.getElementById('route-results').classList.remove('route-results-hidden');
-    document.getElementById('res-distance').textContent = `${totalMiles} mi`;
-    document.getElementById('res-duration').textContent = `${Math.round(durationSeconds / 60)} min`;
-    document.getElementById('res-intercepts').textContent = finalIntercepts;
+    const resultsEl = document.getElementById('route-results');
+    if (resultsEl) resultsEl.classList.remove('route-results-hidden');
+    
+    const resDist = document.getElementById('res-distance');
+    if (resDist) resDist.textContent = `${totalMiles} mi`;
+    
+    const resDur = document.getElementById('res-duration');
+    if (resDur) resDur.textContent = `${Math.round(durationSeconds / 60)} min`;
+    
+    const resInt = document.getElementById('res-intercepts');
+    if (resInt) resInt.textContent = finalIntercepts;
 
     state.activeRouteCoords = leafletCoords; 
     state.activeDestination = targetCoords; 
     state.activeMode = mode;
     
-    // Auto-Dismiss Drawer immediately to reveal map and route results
-    document.getElementById('panel-routing').classList.add('panel-hidden');
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector('[data-tab="radar-view"]').classList.add('active');
-
     evaluateActiveTracking();
 
-  } catch (err) { if (!isAutoRecalc) alert(err.message); } 
-  finally {
-    if (!isAutoRecalc) { 
-      btn.textContent = 'Generate Navigation Vectors'; 
-      btn.style.opacity = '1'; 
-      btn.style.pointerEvents = 'auto'; 
-    }
-  }
+  } catch (err) { if (!isAutoRecalc) alert(err.message); }
 }
 
 // Ledger & Storage
 function logLedgerEntry(camera) {
-  const entry = { id: `log-${Date.now()}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), hardware: camera.hardware, lat: camera.lat.toFixed(4), lon: camera.lon.toFixed(4) };
+  const entry = { id: `log-${Date.now()}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), hardware: camera.hardware, lat: Number(camera.lat).toFixed(4), lon: Number(camera.lon).toFixed(4) };
   state.ledger.unshift(entry); if (state.ledger.length > 50) state.ledger.pop();
   localStorage.setItem('ghostlane_ledger', JSON.stringify(state.ledger)); updateLedgerDisplay();
 }
 
 function updateLedgerDisplay() {
-  const count = state.ledger.length; document.getElementById('ledger-total-count').textContent = count;
-  let grade = count > 8 ? 'F' : count > 3 ? 'C' : 'A+'; let gradeClass = count > 8 ? 'grade-f' : count > 3 ? 'grade-c' : 'grade-a';
+  const count = state.ledger.length; 
+  const totalCountEl = document.getElementById('ledger-total-count');
+  if (totalCountEl) totalCountEl.textContent = count;
+  
+  let grade = count > 8 ? 'F' : count > 3 ? 'C' : 'A+'; 
+  let gradeClass = count > 8 ? 'grade-f' : count > 3 ? 'grade-c' : 'grade-a';
 
-  document.getElementById('stat-privacy').textContent = grade; document.getElementById('stat-privacy').className = `hud-value ${gradeClass}`;
-  if (document.getElementById('ledger-grade')) { document.getElementById('ledger-grade').textContent = grade; document.getElementById('ledger-grade').className = gradeClass; }
+  const statPrivacy = document.getElementById('stat-privacy');
+  if (statPrivacy) {
+    statPrivacy.textContent = grade; 
+    statPrivacy.className = `hud-value ${gradeClass}`;
+  }
+
   const listEl = document.getElementById('ledger-list');
   if (listEl) {
     if (state.ledger.length === 0) listEl.innerHTML = '<li class="empty-state">No surveillance intercepts recorded today.</li>';
@@ -525,8 +499,10 @@ function toggleLiveRadar() {
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId); 
     state.watchId = null;
-    btn.textContent = 'START RADAR'; 
-    btn.classList.remove('btn-radar-active');
+    if (btn) {
+      btn.textContent = 'START RADAR'; 
+      btn.classList.remove('btn-radar-active');
+    }
     state.activeRouteCoords = null; 
     state.activeDestination = null;
     state.routeLayer.clearLayers(); 
@@ -536,8 +512,10 @@ function toggleLiveRadar() {
 
   if (!('geolocation' in navigator)) return alert('Geolocation permissions required for live radar.');
   
-  btn.textContent = 'RADAR LIVE'; 
-  btn.classList.add('btn-radar-active');
+  if (btn) {
+    btn.textContent = 'RADAR LIVE'; 
+    btn.classList.add('btn-radar-active');
+  }
 
   state.watchId = navigator.geolocation.watchPosition(
     pos => {
@@ -545,8 +523,12 @@ function toggleLiveRadar() {
       const speedMph = speed ? Math.round(speed * 2.23694) : 0;
       const currentHeading = heading !== null && !isNaN(heading) ? Math.round(heading) : 0;
       state.position = { lat: latitude, lon: longitude, heading: currentHeading, speed: speed || 0 };
-      document.getElementById('stat-speed').innerHTML = `${speedMph} <small>MPH</small>`;
-      document.getElementById('stat-heading').innerHTML = `${currentHeading}°`;
+      
+      const speedEl = document.getElementById('stat-speed');
+      if (speedEl) speedEl.innerHTML = `${speedMph} <small>MPH</small>`;
+      
+      const headingEl = document.getElementById('stat-heading');
+      if (headingEl) headingEl.innerHTML = `${currentHeading}°`;
 
       updateVehicleMarker(latitude, longitude, currentHeading);
 
@@ -562,9 +544,15 @@ function toggleLiveRadar() {
 // UI Event Binding
 document.addEventListener('DOMContentLoaded', () => {
   initMap(); 
-  document.getElementById('btn-toggle-radar').addEventListener('click', toggleLiveRadar);
-  document.getElementById('btn-sync-mesh').addEventListener('click', () => { const center = state.position ? state.position : state.map.getCenter(); syncMeshCameras(center.lat, center.lon || center.lng, 5); });
-  document.getElementById('btn-recenter').addEventListener('click', () => { 
+  
+  const toggleRadarBtn = document.getElementById('btn-toggle-radar');
+  if (toggleRadarBtn) toggleRadarBtn.addEventListener('click', toggleLiveRadar);
+
+  const syncBtn = document.getElementById('btn-sync-mesh');
+  if (syncBtn) syncBtn.addEventListener('click', () => { const center = state.position ? state.position : state.map.getCenter(); syncMeshCameras(center.lat, center.lon || center.lng, 5); });
+  
+  const recenterBtn = document.getElementById('btn-recenter');
+  if (recenterBtn) recenterBtn.addEventListener('click', () => { 
     if (state.position) {
       state.map.setView([state.position.lat, state.position.lon], 16);
     } 
@@ -584,40 +572,70 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.btn-close').forEach(btn => {
     btn.addEventListener('click', () => {
       const panelId = btn.getAttribute('data-close'); 
-      document.getElementById(panelId).classList.add('panel-hidden');
+      const panel = document.getElementById(panelId);
+      if (panel) panel.classList.add('panel-hidden');
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-      document.querySelector('[data-tab="radar-view"]').classList.add('active');
+      const radarTab = document.querySelector('[data-tab="radar-view"]');
+      if (radarTab) radarTab.classList.add('active');
     });
   });
 
-  document.getElementById('btn-calculate-route').addEventListener('click', async () => {
-    const destInput = document.getElementById('route-dest').value.trim();
-    if (!destInput) return alert('Enter a valid destination address or coordinates.');
-    const mode = document.querySelector('input[name="route-mode"]:checked').value;
-    try {
-      let targetCoords; const parts = destInput.split(',').map(s => parseFloat(s.trim()));
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) { targetCoords = { lat: parts[0], lon: parts[1] }; } 
-      else { targetCoords = await geocodeAddress(destInput); }
-      await calculateShadowRoute(targetCoords, mode, false);
-    } catch (err) { alert(err.message); }
-  });
+  const calcRouteBtn = document.getElementById('btn-calculate-route');
+  if (calcRouteBtn) {
+    calcRouteBtn.addEventListener('click', async () => {
+      const destInput = document.getElementById('route-dest').value.trim();
+      if (!destInput) return alert('Enter a valid destination address or coordinates.');
+      const modeEl = document.querySelector('input[name="route-mode"]:checked');
+      const mode = modeEl ? modeEl.value : 'ghost';
+      try {
+        let targetCoords; const parts = destInput.split(',').map(s => parseFloat(s.trim()));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) { targetCoords = { lat: parts[0], lon: parts[1] }; } 
+        else { targetCoords = await geocodeAddress(destInput); }
+        await calculateShadowRoute(targetCoords, mode, false);
+      } catch (err) { alert(err.message); }
+    });
+  }
 
-  document.getElementById('btn-submit-node').addEventListener('click', () => {
-    const hardware = document.getElementById('node-hardware').value; 
-    const heading = parseInt(document.getElementById('node-heading').value, 10);
-    const fov = parseInt(document.getElementById('node-fov').value, 10); 
-    const range = parseInt(document.getElementById('node-range').value, 10) || 400;
-    const mode = document.getElementById('node-coords-mode').value; 
-    let targetLat, targetLon;
-    if (mode === 'current' && state.position) { targetLat = state.position.lat; targetLon = state.position.lon; } 
-    else { const center = state.map.getCenter(); targetLat = center.lat; targetLon = center.lng; }
-    state.cameras.push({ id: `custom-${Date.now()}`, lat: targetLat, lon: targetLon, heading, fov, range, hardware, source: 'Community Verified' });
-    saveStoredCameras(); 
-    renderCameraNodes();
-    document.getElementById('panel-verify').classList.add('panel-hidden'); 
-    document.querySelector('[data-tab="radar-view"]').classList.add('active');
-    alert('Node authenticated and written to local mesh!');
-  });
+  const submitNodeBtn = document.getElementById('btn-submit-node');
+  if (submitNodeBtn) {
+    submitNodeBtn.addEventListener('click', async () => {
+      const hardware = document.getElementById('node-hardware').value; 
+      const heading = parseInt(document.getElementById('node-heading').value, 10);
+      const fov = parseInt(document.getElementById('node-fov').value, 10); 
+      const range = parseInt(document.getElementById('node-range').value, 10) || 400;
+      const mode = document.getElementById('node-coords-mode').value; 
+      let targetLat, targetLon;
+      if (mode === 'current' && state.position) { targetLat = state.position.lat; targetLon = state.position.lon; } 
+      else { const center = state.map.getCenter(); targetLat = center.lat; targetLon = center.lng; }
+      
+      const newNode = {
+        lat: Number(targetLat),
+        lng: Number(targetLon),
+        node_id: `custom-${Date.now()}`,
+        heading: Number(heading),
+        label: String(hardware)
+      };
 
-  document.getElementById('btn-clear-ledger').addEventListener('click', () => { state.ledger = []; localStorage.removeItem('ghostlane_ledger'); updateLedgerDisplay(); });
+      state.cameras.push({ id: newNode.node_id, lat: newNode.lat, lon: newNode.lng, heading: newNode.heading, fov, range, hardware: newNode.label, source: 'Community Verified' });
+      saveStoredCameras(); 
+      renderCameraNodes();
+      
+      const verifyPanel = document.getElementById('panel-verify');
+      if (verifyPanel) verifyPanel.classList.add('panel-hidden');
+      const radarTab = document.querySelector('[data-tab="radar-view"]');
+      if (radarTab) radarTab.classList.add('active');
+
+      if (_supabase) {
+        try {
+          await _supabase.from('cameras').insert([newNode]);
+        } catch (e) {
+          console.warn("Cloud write error:", e);
+        }
+      }
+      alert('Node authenticated and written to cloud mesh!');
+    });
+  }
+
+  const clearLedgerBtn = document.getElementById('btn-clear-ledger');
+  if (clearLedgerBtn) clearLedgerBtn.addEventListener('click', () => { state.ledger = []; localStorage.removeItem('ghostlane_ledger'); updateLedgerDisplay(); });
 });

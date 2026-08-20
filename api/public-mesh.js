@@ -1,6 +1,9 @@
 const zlib = require('zlib');
 
-const SOURCE_URL = 'https://data.dontgetflocked.com/cameras.geojson.gz';
+const SOURCES = [
+  'https://data.dontgetflocked.com/cameras.geojson.gz',
+  'https://data.dontgetflocked.com/cameras.geojson'
+];
 const OKC = { minLat: 35.20, minLng: -97.85, maxLat: 35.75, maxLng: -97.20 };
 
 function inOkc(lat, lng) {
@@ -14,65 +17,58 @@ function normalizeFeature(feature) {
   const lng = Number(coords[0]);
   const lat = Number(coords[1]);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inOkc(lat, lng)) return null;
-
   const tags = props.tags || props;
   const rawHeading = Number(tags.direction ?? tags.heading);
   return {
-    lat,
-    lng,
+    lat, lng,
     id: String(props.id || tags.id || `PUB-${lat.toFixed(5)}-${lng.toFixed(5)}`),
     heading: Number.isFinite(rawHeading) ? rawHeading : 0,
     label: String(tags.manufacturer || tags.brand || tags.operator || tags['surveillance:type'] || 'Public map'),
     type: String(tags['camera:type'] || tags.surveillance || tags['surveillance:zone'] || 'ALPR / surveillance camera'),
-    source: 'DeFlock / OpenStreetMap',
-    confidence: 'community'
+    source: 'DeFlock / OpenStreetMap', confidence: 'community'
   };
 }
 
 function parseBody(buffer) {
   let data = buffer;
-  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) {
-    data = zlib.gunzipSync(buffer);
-  }
+  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) data = zlib.gunzipSync(buffer);
   return JSON.parse(data.toString('utf8'));
 }
 
+async function fetchSource(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const upstream = await fetch(url, {
+      headers: { 'Accept': 'application/json, application/gzip, */*', 'User-Agent': 'GhostLane/1.3.6 public-camera-mesh' },
+      signal: controller.signal
+    });
+    if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
+    const raw = Buffer.from(await upstream.arrayBuffer());
+    const geojson = parseBody(raw);
+    if (!geojson || !Array.isArray(geojson.features)) throw new Error('Invalid GeoJSON');
+    return geojson;
+  } finally { clearTimeout(timer); }
+}
+
 module.exports = async function handler(req, res) {
-  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=900, stale-while-revalidate=3600');
+  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=900, stale-while-revalidate=86400');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET required.' });
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
-  try {
-    const upstream = await fetch(SOURCE_URL, {
-      headers: {
-        'Accept': 'application/json, application/gzip, */*',
-        'User-Agent': 'GhostLane/1.3.4 public-camera-mesh'
-      },
-      signal: controller.signal
-    });
-    if (!upstream.ok) throw new Error(`Upstream HTTP ${upstream.status}`);
-
-    const raw = Buffer.from(await upstream.arrayBuffer());
-    const geojson = parseBody(raw);
-    const nodes = [];
-    for (const feature of geojson.features || []) {
-      const node = normalizeFeature(feature);
-      if (node) nodes.push(node);
+  const errors = [];
+  for (const sourceUrl of SOURCES) {
+    try {
+      const geojson = await fetchSource(sourceUrl);
+      const nodes = [];
+      for (const feature of geojson.features) {
+        const node = normalizeFeature(feature);
+        if (node) nodes.push(node);
+      }
+      return res.status(200).json({ nodes, count: nodes.length, source: 'DeFlock / OpenStreetMap', region: 'Oklahoma City metro', generatedAt: new Date().toISOString() });
+    } catch (error) {
+      errors.push(`${sourceUrl}: ${error && error.name === 'AbortError' ? 'timeout' : (error.message || 'failed')}`);
     }
-
-    return res.status(200).json({
-      nodes,
-      count: nodes.length,
-      source: 'DeFlock / OpenStreetMap',
-      region: 'Oklahoma City metro',
-      generatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    const message = error && error.name === 'AbortError' ? 'Public camera source timed out.' : (error.message || 'Public camera source unavailable.');
-    return res.status(502).json({ error: message });
-  } finally {
-    clearTimeout(timer);
   }
+  return res.status(502).json({ error: 'Public camera sources are temporarily unreachable.', details: errors });
 };

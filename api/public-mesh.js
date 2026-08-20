@@ -1,127 +1,20 @@
-const zlib = require('zlib');
-
-const OKC = { minLat: 35.15, minLng: -97.95, maxLat: 35.85, maxLng: -97.05 };
-const DEFLOCK_SOURCES = [
-  'https://data.dontgetflocked.com/cameras.geojson.gz',
-  'https://data.dontgetflocked.com/cameras.geojson'
-];
-const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://lz4.overpass-api.de/api/interpreter'
-];
-
-function inOkc(lat, lng) {
-  return lat >= OKC.minLat && lat <= OKC.maxLat && lng >= OKC.minLng && lng <= OKC.maxLng;
-}
-function headingValue(v){
-  const n=Number(v); if(Number.isFinite(n)) return ((n%360)+360)%360;
-  const m={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
-  return m[String(v||'').trim().toUpperCase().split(';')[0]] ?? 0;
-}
-function isPrioritySurveillance(tags={}){
-  const blob=[tags.name,tags.operator,tags.brand,tags.manufacturer,tags['surveillance:type'],tags['camera:type'],tags.surveillance,tags.description].filter(Boolean).join(' ').toLowerCase();
-  return /flock|alpr|license\s*plate|plate\s*reader|automatic\s*license|\blpr\b/.test(blob);
-}
-function isTrafficEnforcementOnly(tags={}){
-  if(isPrioritySurveillance(tags)) return false;
-  const enforcement=String(tags.enforcement||'').toLowerCase();
-  const highway=String(tags.highway||'').toLowerCase();
-  const blob=[tags.name,tags.operator,tags.brand,tags.manufacturer,tags['surveillance:type'],tags['camera:type'],tags.surveillance,tags.description,enforcement,highway].filter(Boolean).join(' ').toLowerCase();
-  if(highway==='speed_camera') return true;
-  if(['traffic_signals','speed','red_light','redlight'].includes(enforcement)) return true;
-  return /\b(red[- ]?light camera|speed camera|traffic enforcement camera)\b/.test(blob);
-}
-function normalizeGeoFeature(feature, source='DeFlock / OpenStreetMap') {
-  const props = feature && feature.properties ? feature.properties : {};
-  const coords = feature && feature.geometry ? feature.geometry.coordinates : null;
-  if (!Array.isArray(coords) || coords.length < 2) return null;
-  const lng = Number(coords[0]), lat = Number(coords[1]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inOkc(lat, lng)) return null;
-  const tags = props.tags || props;
-  if(isTrafficEnforcementOnly(tags)) return null;
-  const surveillanceType = tags['surveillance:type'] || tags['camera:type'] || tags.surveillance || tags['surveillance:zone'];
-  const label = tags.manufacturer || tags.brand || tags.operator || tags.name || (String(surveillanceType||'').toUpperCase()==='ALPR'?'ALPR Camera':'Public Surveillance Camera');
-  return {
-    lat,lng,
-    id:String(props.id || tags.id || `PUB-${lat.toFixed(6)}-${lng.toFixed(6)}`),
-    heading:headingValue(tags.direction ?? tags['camera:direction'] ?? tags.heading),
-    label:String(label).slice(0,180),
-    type:String(surveillanceType || 'Surveillance Camera').slice(0,180),
-    source,
-    confidence:'community'
-  };
-}
-function parseBody(buffer) {
-  let data = buffer;
-  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) data = zlib.gunzipSync(buffer);
-  return JSON.parse(data.toString('utf8'));
-}
-async function fetchWithTimeout(url, options={}, ms=14000){
-  const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),ms);
-  try{return await fetch(url,{...options,signal:controller.signal})} finally {clearTimeout(timer)}
-}
-async function fetchDeflock(){
-  const failures=[];
-  for(const url of DEFLOCK_SOURCES){
-    try{
-      const upstream=await fetchWithTimeout(url,{headers:{'Accept':'application/json, application/geo+json, application/gzip, */*','User-Agent':'GhostLane/1.4.3 public-camera-mesh'}},14000);
-      if(!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
-      const raw=Buffer.from(await upstream.arrayBuffer());
-      const geojson=parseBody(raw), nodes=[];
-      for(const feature of geojson.features||[]){const n=normalizeGeoFeature(feature,'DeFlock / OpenStreetMap');if(n)nodes.push(n)}
-      return {nodes,source:'DeFlock / OpenStreetMap'};
-    }catch(e){failures.push(`${url}: ${e.name==='AbortError'?'timeout':e.message}`)}
-  }
-  throw new Error(`DeFlock unavailable (${failures.join(' | ')})`);
-}
-function overpassQuery(){
-  const b=`${OKC.minLat},${OKC.minLng},${OKC.maxLat},${OKC.maxLng}`;
-  return `[out:json][timeout:20];(nwr["man_made"="surveillance"](${b});nwr["surveillance:type"="ALPR"](${b}););out center tags;`;
-}
-function normalizeOverpass(e){
-  const p=(Number.isFinite(e.lat)&&Number.isFinite(e.lon))?{lat:e.lat,lng:e.lon}:(e.center&&Number.isFinite(e.center.lat)&&Number.isFinite(e.center.lon)?{lat:e.center.lat,lng:e.center.lon}:null);
-  if(!p||!inOkc(p.lat,p.lng))return null;
-  const t=e.tags||{};
-  if(isTrafficEnforcementOnly(t)) return null;
-  const st=t['surveillance:type']||t['camera:type']||t.surveillance;
-  const isAlpr=String(st||'').toUpperCase()==='ALPR'||isPrioritySurveillance(t);
-  return {lat:+p.lat,lng:+p.lng,id:`OSM-${e.type}-${e.id}`,heading:headingValue(t.direction??t['camera:direction']),label:String(t.manufacturer||t.brand||t.operator||t.name||(isAlpr?'ALPR Camera':'Surveillance Camera')).slice(0,180),type:String(st||'Surveillance Camera').slice(0,180),source:'OpenStreetMap / Overpass',confidence:'community'};
-}
-async function fetchOverpass(){
-  const query=overpassQuery(), failures=[];
-  for(const endpoint of OVERPASS_ENDPOINTS){
-    try{
-      const r=await fetchWithTimeout(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json','User-Agent':'GhostLane/1.4.3 camera-mesh'},body:`data=${encodeURIComponent(query)}`},15000);
-      if(!r.ok)throw new Error(`HTTP ${r.status}`);
-      const data=await r.json();
-      return {nodes:(data.elements||[]).map(normalizeOverpass).filter(Boolean),source:'OpenStreetMap / Overpass'};
-    }catch(e){failures.push(`${endpoint}: ${e.name==='AbortError'?'timeout':e.message}`)}
-  }
-  throw new Error(`Overpass unavailable (${failures.join(' | ')})`);
-}
-function metersBetween(a,b){
-  const R=6371000,p1=a.lat*Math.PI/180,p2=b.lat*Math.PI/180,dp=(b.lat-a.lat)*Math.PI/180,dl=(b.lng-a.lng)*Math.PI/180;
-  const h=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
-}
-function mergeNodes(groups){
-  const out=[];
-  for(const group of groups){for(const n of group.nodes||[]){
-    const hit=out.find(x=>metersBetween(x,n)<=18);
-    if(hit){hit.sources=[...new Set([...(hit.sources||[hit.source]),n.source])]; if(!hit.label&&n.label)hit.label=n.label; continue;}
-    out.push({...n,sources:[n.source]});
-  }}
-  return out;
-}
-module.exports = async function handler(req, res) {
-  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=900, stale-while-revalidate=3600');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  if (req.method !== 'GET') return res.status(405).json({ error: 'GET required.' });
-  const settled=await Promise.allSettled([fetchDeflock(),fetchOverpass()]);
-  const groups=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);
-  const failures=settled.filter(x=>x.status==='rejected').map(x=>x.reason?.message||'Unknown source failure');
-  if(!groups.length)return res.status(502).json({error:'All public camera sources are temporarily unavailable.',failures});
-  const nodes=mergeNodes(groups);
-  return res.status(200).json({nodes,count:nodes.length,region:'Oklahoma City metro',sources:groups.map(g=>({name:g.source,count:g.nodes.length})),partial:failures.length>0,failures,generatedAt:new Date().toISOString()});
-};
+const zlib=require('zlib');
+const OKC={minLat:35.15,minLng:-97.95,maxLat:35.85,maxLng:-97.05};
+const DEFLOCK_SOURCES=['https://data.dontgetflocked.com/cameras.geojson.gz','https://data.dontgetflocked.com/cameras.geojson'];
+const OVERPASS_ENDPOINTS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://lz4.overpass-api.de/api/interpreter'];
+function inOkc(lat,lng){return lat>=OKC.minLat&&lat<=OKC.maxLat&&lng>=OKC.minLng&&lng<=OKC.maxLng}
+function headingValue(v){const n=Number(v);if(Number.isFinite(n))return((n%360)+360)%360;const m={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};return m[String(v||'').trim().toUpperCase().split(';')[0]]??0}
+function blob(tags={}){return [tags.name,tags.operator,tags.brand,tags.manufacturer,tags['surveillance:type'],tags['camera:type'],tags.surveillance,tags.description,tags.enforcement,tags.highway].filter(Boolean).join(' ').toLowerCase()}
+function category(tags={}){const b=blob(tags),e=String(tags.enforcement||'').toLowerCase(),h=String(tags.highway||'').toLowerCase();if(/flock|alpr|license\s*plate|plate\s*reader|automatic\s*license|\blpr\b/.test(b))return'alpr';if(e==='traffic_signals'||/red[- ]?light/.test(b))return'red-light';if(h==='speed_camera'||e==='speed'||/\bspeed camera\b/.test(b))return'speed';if(e||/traffic enforcement|traffic camera/.test(b))return'traffic';return'surveillance'}
+function labelFor(tags,cat){return String(tags.manufacturer||tags.brand||tags.operator||tags.name||({alpr:'ALPR / Flock Camera','red-light':'Red-Light Camera',speed:'Speed Camera',traffic:'Traffic Camera',surveillance:'Surveillance Camera'}[cat])).slice(0,180)}
+function typeFor(tags,cat){return String(tags['surveillance:type']||tags['camera:type']||tags.surveillance||tags.enforcement||({alpr:'ALPR / License Plate Reader','red-light':'Red-Light Enforcement',speed:'Speed Enforcement',traffic:'Traffic Enforcement',surveillance:'Surveillance Camera'}[cat])).slice(0,180)}
+function normalizeGeoFeature(feature,source='DeFlock / OpenStreetMap'){const props=feature?.properties||{},coords=feature?.geometry?.coordinates;if(!Array.isArray(coords)||coords.length<2)return null;const lng=+coords[0],lat=+coords[1];if(!Number.isFinite(lat)||!Number.isFinite(lng)||!inOkc(lat,lng))return null;const tags=props.tags||props,cat=category(tags);return{lat,lng,id:String(props.id||tags.id||`PUB-${lat.toFixed(6)}-${lng.toFixed(6)}`),heading:headingValue(tags.direction??tags['camera:direction']??tags.heading),label:labelFor(tags,cat),type:typeFor(tags,cat),category:cat,routeBlocking:cat==='alpr'||cat==='surveillance',source,confidence:'community'}}
+function parseBody(buffer){let data=buffer;if(buffer.length>=2&&buffer[0]===0x1f&&buffer[1]===0x8b)data=zlib.gunzipSync(buffer);return JSON.parse(data.toString('utf8'))}
+async function fetchWithTimeout(url,options={},ms=14000){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,{...options,signal:c.signal})}finally{clearTimeout(t)}}
+async function fetchDeflock(){const failures=[];for(const url of DEFLOCK_SOURCES){try{const r=await fetchWithTimeout(url,{headers:{Accept:'application/json, application/geo+json, application/gzip, */*','User-Agent':'GhostLane/1.5.2 public-camera-mesh'}},14000);if(!r.ok)throw new Error(`HTTP ${r.status}`);const raw=Buffer.from(await r.arrayBuffer()),geo=parseBody(raw),nodes=[];for(const f of geo.features||[]){const n=normalizeGeoFeature(f);if(n)nodes.push(n)}return{nodes,source:'DeFlock / OpenStreetMap'}}catch(e){failures.push(`${url}: ${e.name==='AbortError'?'timeout':e.message}`)}}throw new Error(`DeFlock unavailable (${failures.join(' | ')})`)}
+function overpassQuery(){const b=`${OKC.minLat},${OKC.minLng},${OKC.maxLat},${OKC.maxLng}`;return`[out:json][timeout:20];(nwr["man_made"="surveillance"](${b});nwr["surveillance:type"="ALPR"](${b});nwr["highway"="speed_camera"](${b});nwr["enforcement"="traffic_signals"](${b});nwr["enforcement"="speed"](${b});nwr["enforcement"](${b}););out center tags;`}
+function normalizeOverpass(e){const p=(Number.isFinite(e.lat)&&Number.isFinite(e.lon))?{lat:e.lat,lng:e.lon}:(e.center&&Number.isFinite(e.center.lat)&&Number.isFinite(e.center.lon)?{lat:e.center.lat,lng:e.center.lon}:null);if(!p||!inOkc(p.lat,p.lng))return null;const tags=e.tags||{},cat=category(tags);return{lat:+p.lat,lng:+p.lng,id:`OSM-${e.type}-${e.id}`,heading:headingValue(tags.direction??tags['camera:direction']),label:labelFor(tags,cat),type:typeFor(tags,cat),category:cat,routeBlocking:cat==='alpr'||cat==='surveillance',source:'OpenStreetMap / Overpass',confidence:'community'}}
+async function fetchOverpass(){const q=overpassQuery(),failures=[];for(const ep of OVERPASS_ENDPOINTS){try{const r=await fetchWithTimeout(ep,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8',Accept:'application/json','User-Agent':'GhostLane/1.5.2 camera-mesh'},body:`data=${encodeURIComponent(q)}`},15000);if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();return{nodes:(d.elements||[]).map(normalizeOverpass).filter(Boolean),source:'OpenStreetMap / Overpass'}}catch(e){failures.push(`${ep}: ${e.name==='AbortError'?'timeout':e.message}`)}}throw new Error(`Overpass unavailable (${failures.join(' | ')})`)}
+function metersBetween(a,b){const R=6371000,p1=a.lat*Math.PI/180,p2=b.lat*Math.PI/180,dp=(b.lat-a.lat)*Math.PI/180,dl=(b.lng-a.lng)*Math.PI/180,h=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.atan2(Math.sqrt(h),Math.sqrt(1-h))}
+function mergeNodes(groups){const out=[];for(const g of groups)for(const n of g.nodes||[]){const hit=out.find(x=>metersBetween(x,n)<=18);if(hit){hit.sources=[...new Set([...(hit.sources||[hit.source]),n.source])];if(hit.category!=='alpr'&&n.category==='alpr'){Object.assign(hit,n,{sources:hit.sources})}continue}out.push({...n,sources:[n.source]})}return out}
+module.exports=async function handler(req,res){res.setHeader('Cache-Control','public, max-age=0, s-maxage=900, stale-while-revalidate=3600');res.setHeader('Content-Type','application/json; charset=utf-8');if(req.method!=='GET')return res.status(405).json({error:'GET required.'});const settled=await Promise.allSettled([fetchDeflock(),fetchOverpass()]),groups=settled.filter(x=>x.status==='fulfilled').map(x=>x.value),failures=settled.filter(x=>x.status==='rejected').map(x=>x.reason?.message||'Unknown source failure');if(!groups.length)return res.status(502).json({error:'All public camera sources are temporarily unavailable.',failures});const nodes=mergeNodes(groups),categories=nodes.reduce((a,n)=>(a[n.category]=(a[n.category]||0)+1,a),{});return res.status(200).json({nodes,count:nodes.length,categories,region:'Oklahoma City metro',sources:groups.map(g=>({name:g.source,count:g.nodes.length})),partial:failures.length>0,failures,generatedAt:new Date().toISOString()})};

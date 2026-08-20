@@ -1,36 +1,15 @@
 (()=>{
   const DEDUPE_METERS=22;
-  const layer=L.layerGroup().addTo(map);
   let mesh=[];
   const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const dist=(a,b)=>map.distance([a.lat,a.lng],[b.lat,b.lng]);
-
-  function addUnique(n){
-    if(!n||!Number.isFinite(+n.lat)||!Number.isFinite(+n.lng))return false;
-    const normalized={...n,lat:+n.lat,lng:+n.lng,heading:Number.isFinite(+n.heading)?+n.heading:0,_publicMesh:true};
-    const existing=cameraLocations.find(c=>dist(c,normalized)<=DEDUPE_METERS);
-    if(existing){existing._sources=[...new Set([...(existing._sources||[]),...(normalized.sources||[normalized.source||'Public Mesh'])])];return false}
-    cameraLocations.push(normalized); mesh.push(normalized); return true;
-  }
-  function popup(n){
-    const sources=(n.sources&&n.sources.length?n.sources:[n.source||'Public Mesh']).join(' + ');
-    return `<div class="node-popup-title">${safe(n.label||'Public camera')}</div><div class="node-popup-type">${safe(n.type||'Surveillance camera')}</div><div class="node-popup-meta"><span>Source: ${safe(sources)}</span><span>Confidence: COMMUNITY / PUBLIC MAPPED</span></div><div class="node-popup-hint">Public/crowdsourced location • may be incomplete, moved, or stale</div>`;
-  }
-  function rebindPublicPopups(){cameraLayerGroup.eachLayer(m=>{const ll=m.getLatLng&&m.getLatLng();if(!ll)return;const n=mesh.find(x=>map.distance(ll,[x.lat,x.lng])<2);if(n)m.bindPopup(popup(n),{closeButton:true,maxWidth:280})})}
-  async function load(){
-    try{
-      const res=await fetch('/api/public-mesh',{cache:'no-store',headers:{Accept:'application/json'}});
-      const data=await res.json().catch(()=>({})); if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);
-      let added=0;(data.nodes||[]).forEach(n=>{if(addUnique(n))added++});
-      if(typeof renderCameras==='function')renderCameras(); rebindPublicPopups();
-      const sourceSummary=(data.sources||[]).map(s=>`${s.name}: ${s.count}`).join(' • ');
-      if(typeof showHudToast==='function')showHudToast(`Camera mesh updated • ${added} sourced nodes added${data.partial?' • partial feed':''}`);
-      console.info('[GhostLane] multi-source camera mesh',{added,total:data.count,sources:data.sources,partial:data.partial,failures:data.failures});
-      window.GhostLanePublicMeshStatus={added,total:data.count,sources:data.sources||[],partial:!!data.partial,failures:data.failures||[],sourceSummary};
-    }catch(e){
-      console.warn('[GhostLane] public mesh load failed',e);
-      window.GhostLanePublicMeshStatus={added:0,total:0,sources:[],partial:true,failures:[e.message]};
-    }
-  }
+  const COLORS={alpr:'#ef4444',surveillance:'#f97316','red-light':'#eab308',speed:'#a855f7',traffic:'#38bdf8'};
+  const LABELS={alpr:'FLOCK / ALPR',surveillance:'SURVEILLANCE','red-light':'RED-LIGHT',speed:'SPEED',traffic:'TRAFFIC'};
+  function iconFor(n){const c=COLORS[n.category]||COLORS.surveillance;return L.divIcon({className:'gl-category-camera',html:`<div style="width:24px;height:24px;border-radius:50%;background:${c};border:2px solid #fff;box-shadow:0 0 12px ${c};display:flex;align-items:center;justify-content:center;color:#06101b;font-size:12px;font-weight:900">●</div>`,iconSize:[24,24],iconAnchor:[12,12],popupAnchor:[0,-12]})}
+  function addUnique(n){if(!n||!Number.isFinite(+n.lat)||!Number.isFinite(+n.lng))return false;const normalized={...n,lat:+n.lat,lng:+n.lng,heading:Number.isFinite(+n.heading)?+n.heading:0,_publicMesh:true};const existing=cameraLocations.find(c=>dist(c,normalized)<=DEDUPE_METERS);if(existing){existing._sources=[...new Set([...(existing._sources||[]),...(normalized.sources||[normalized.source||'Public Mesh'])])];if(!existing.category)existing.category=normalized.category;if(existing.routeBlocking==null)existing.routeBlocking=normalized.routeBlocking;return false}cameraLocations.push(normalized);mesh.push(normalized);return true}
+  function popup(n){const sources=(n.sources&&n.sources.length?n.sources:[n.source||'Public Mesh']).join(' + '),cat=LABELS[n.category]||'SURVEILLANCE';return `<div class="node-popup-title">${safe(n.label||'Public camera')}</div><div class="node-popup-type" style="color:${COLORS[n.category]||COLORS.surveillance}">${safe(cat)} • ${safe(n.type||'Camera')}</div><div class="node-popup-meta"><span>Source: ${safe(sources)}</span><span>Confidence: COMMUNITY / PUBLIC MAPPED</span><span>Routing: ${n.routeBlocking===false?'INFORMATIONAL ONLY':'AVOIDANCE ACTIVE'}</span></div><div class="node-popup-hint">Public/crowdsourced location • may be incomplete, moved, or stale</div>`}
+  function restyle(){cameraLayerGroup.eachLayer(m=>{const ll=m.getLatLng&&m.getLatLng();if(!ll)return;const n=mesh.find(x=>map.distance(ll,[x.lat,x.lng])<2);if(n){if(m.setIcon)m.setIcon(iconFor(n));m.bindPopup(popup(n),{closeButton:true,maxWidth:290})}})}
+  function legend(){if(document.getElementById('gl-camera-legend'))return;const el=document.createElement('div');el.id='gl-camera-legend';el.style.cssText='position:absolute;left:10px;bottom:12px;z-index:1000;background:rgba(8,13,26,.9);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:7px 9px;font-size:9px;font-weight:800;color:#cbd5e1;line-height:1.55;pointer-events:none;box-shadow:0 5px 18px rgba(0,0,0,.4)';el.innerHTML=`<div><span style="color:${COLORS.alpr}">●</span> Flock/ALPR</div><div><span style="color:${COLORS.surveillance}">●</span> Surveillance</div><div><span style="color:${COLORS['red-light']}">●</span> Red-light</div><div><span style="color:${COLORS.speed}">●</span> Speed</div><div><span style="color:${COLORS.traffic}">●</span> Traffic</div>`;document.getElementById('map-wrapper')?.appendChild(el)}
+  async function load(){try{const res=await fetch('/api/public-mesh',{cache:'no-store',headers:{Accept:'application/json'}}),data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);let added=0;(data.nodes||[]).forEach(n=>{if(addUnique(n))added++});if(typeof renderCameras==='function')renderCameras();restyle();legend();if(typeof showHudToast==='function')showHudToast(`Camera mesh updated • ${added} nodes • category colors active`);window.GhostLanePublicMeshStatus={added,total:data.count,categories:data.categories||{},sources:data.sources||[],partial:!!data.partial,failures:data.failures||[]};console.info('[GhostLane] category camera mesh',window.GhostLanePublicMeshStatus)}catch(e){console.warn('[GhostLane] public mesh load failed',e);window.GhostLanePublicMeshStatus={added:0,total:0,sources:[],partial:true,failures:[e.message]}}}
   load();
 })();

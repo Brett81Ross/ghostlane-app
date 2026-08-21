@@ -311,21 +311,24 @@
     if (!status) {
       return { ok: false, reason: 'The current Flock camera mesh has not finished syncing.' };
     }
-    if (status.partial || (status.failures || []).length) {
+    if (status.partial) {
       return {
         ok: false,
-        reason: 'One or more camera sources is unavailable, so GhostLane cannot verify a zero-Flock route.'
+        reason: 'No current ALPR camera source is available, so GhostLane cannot verify a zero-Flock route.'
       };
     }
 
     const sourceNames = (status.sources || []).map(source =>
       String(typeof source === 'string' ? source : source?.name || '')
     ).join(' ');
-    if (!/deflock/i.test(sourceNames) || !/openstreetmap|overpass/i.test(sourceNames)) {
+    if (!/deflock|openstreetmap|overpass/i.test(sourceNames)) {
       return {
         ok: false,
-        reason: 'Both DeFlock and OpenStreetMap camera sources are required before strict routing can begin.'
+        reason: 'A current DeFlock or OpenStreetMap ALPR source is required before strict routing can begin.'
       };
+    }
+    if (!Number.isFinite(Number(status.categories?.alpr)) || Number(status.categories.alpr) < 1) {
+      return { ok: false, reason: 'The current camera source returned no ALPR records for this coverage area.' };
     }
     if (!Number.isFinite(Number(status.total)) || Number(status.total) < 1) {
       return { ok: false, reason: 'No verified camera records are loaded for this routing session.' };

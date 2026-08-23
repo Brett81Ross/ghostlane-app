@@ -1,0 +1,64 @@
+name: Wire GhostLane Stripe Checkout
+
+on:
+  push:
+    paths:
+      - '.github/workflows/wire-stripe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire-stripe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inject live Stripe subscription button
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text()
+          marker = '<!-- GHOSTLANE_STRIPE_WIRED -->'
+          if marker not in s:
+              block = r'''<!-- GHOSTLANE_STRIPE_WIRED -->
+<style>
+  #ghostlane-pro-cta{position:fixed;left:14px;bottom:76px;z-index:1500;background:linear-gradient(135deg,#38bdf8,#0ea5e9);color:#020617;border:1px solid rgba(125,211,252,.8);border-radius:13px;padding:11px 14px;font-size:.72rem;font-weight:900;letter-spacing:.45px;box-shadow:0 8px 24px rgba(14,165,233,.35);cursor:pointer;text-transform:uppercase;touch-action:manipulation}
+  #ghostlane-pro-cta:active{transform:scale(.97)}
+  #ghostlane-pro-note{display:block;font-size:.56rem;font-weight:700;opacity:.75;margin-top:2px;text-transform:none;letter-spacing:0}
+  @media(max-width:430px){#ghostlane-pro-cta{left:10px;bottom:73px;padding:10px 12px}}
+</style>
+<button id="ghostlane-pro-cta" type="button" aria-label="Subscribe to GhostLane Pro">GhostLane Pro — $7.99/mo<span id="ghostlane-pro-note">Secure checkout by Stripe</span></button>
+<script>
+(function(){
+  const STRIPE_URL='https://buy.stripe.com/14AaEZ2z82nRg3F60da7C00';
+  const btn=document.getElementById('ghostlane-pro-cta');
+  if(btn) btn.addEventListener('click',()=>{window.location.href=STRIPE_URL;});
+  if(new URLSearchParams(location.search).get('payment')==='success'){
+    setTimeout(()=>{
+      const msg='GhostLane Pro subscription activated through Stripe.';
+      if(typeof showHudToast==='function') showHudToast(msg);
+      else alert(msg);
+      history.replaceState({},document.title,location.pathname);
+    },500);
+  }
+})();
+</script>
+'''
+              s = s.replace('</body>', block + '\n</body>', 1)
+              p.write_text(s)
+          PY
+
+      - name: Commit injected Stripe wiring
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          if git diff --cached --quiet; then
+            echo 'Stripe wiring already present.'
+          else
+            git commit -m 'Wire GhostLane live Stripe subscription checkout'
+            git push
+          fi

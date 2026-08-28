@@ -261,5 +261,7 @@
 
     map.on('click',async function(e){if(logNodeMode){const newNode={lat:e.latlng.lat,lng:e.latlng.lng,id:`MANUAL-${Math.floor(1000+Math.random()*9000)}`,heading:0,label:'User Logged Trap'};newNode._manual=true;cameraLocations.push(newNode);try{const stored=JSON.parse(localStorage.getItem('gl_manual_nodes')||'[]');stored.push(newNode);localStorage.setItem('gl_manual_nodes',JSON.stringify(stored))}catch(err){}renderCameras();playPing(800,'square',.12);showHudToast('Optical node logged to mesh.','orange');if(_supabase){try{const{error}=await _supabase.from('cameras').insert([{lat:newNode.lat,lng:newNode.lng,node_id:newNode.id,heading:newNode.heading,label:newNode.label}]);if(error)throw error;newNode._cloud=true}catch(err){console.warn('Cloud push failed:',err);showHudToast('Node saved locally • cloud sync failed.','danger')}}}});
   </script>
+  <script src="/demo-config.js" defer></script>
+  <script src="/cactusbyte-demo.js" defer></script>
 </body>
 </html>

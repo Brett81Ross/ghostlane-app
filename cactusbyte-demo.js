@@ -163,17 +163,8 @@
   backdrop.addEventListener('click',function(event){if(event.target===backdrop)close();});
   backdrop.querySelector('.cbs-demo-start').onclick=function(){localStorage.setItem(seenKey,'1');close();cfg.onStart&&cfg.onStart();};
 
-  var target=document.querySelector(cfg.triggerContainer||'.topbar')||document.body;
-  var trigger=document.createElement('button');
-  trigger.type='button';
-  trigger.className='cbs-demo-trigger';
-  trigger.textContent='Help';
-  trigger.setAttribute('aria-label','How to use '+cfg.appName);
-  trigger.onclick=function(){open(false);};
-  target.appendChild(trigger);
+  // Legacy walkthrough remains callable for backwards compatibility, but it never
+  // opens automatically and no Help button is added. The single visible entry
+  // point is the shared, bottom-right 60-second demo control.
   window.openCactusByteDemo=function(){open(false);};
-
-  if(cfg.firstLaunch!==false&&localStorage.getItem(seenKey)!=='1'&&localStorage.getItem(dismissedKey)!=='1'){
-    setTimeout(function(){open(true);},Number(cfg.autoDelayMs)||900);
-  }
 })();

@@ -156,3 +156,5 @@ window.CACTUSBYTE_DEMO={
     }
   ]
 };
+
+(()=>{const s=document.createElement('script');s.src='https://cactusbyte-studios.vercel.app/demo-embed.js';s.dataset.cactusbyteDemo='ghostlane';s.defer=true;document.body.appendChild(s)})();

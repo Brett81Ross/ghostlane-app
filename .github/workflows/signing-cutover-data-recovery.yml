@@ -1,0 +1,66 @@
+name: GhostLane Signing Cutover Recovery QA
+
+on:
+  push:
+    branches: [android-signing-cutover-data-recovery]
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'radar.html'
+      - 'ghostlane-recovery.js'
+      - 'ghostlane-recovery-ui.js'
+      - 'tools/apply-signing-cutover-data-recovery.py'
+      - 'tools/qa-signing-cutover-data-recovery.mjs'
+      - '.github/workflows/signing-cutover-data-recovery.yml'
+      - 'vercel.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v5
+        with:
+          ref: android-signing-cutover-data-recovery
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Apply deterministic encrypted recovery patch
+        run: python tools/apply-signing-cutover-data-recovery.py
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Run encrypted ledger recovery QA
+        run: node tools/qa-signing-cutover-data-recovery.mjs
+      - name: Syntax-check staged JavaScript
+        run: |
+          node --check ghostlane-recovery.js
+          node --check ghostlane-recovery-ui.js
+          node --check app.js
+      - name: Verify deployment and Supabase boundaries
+        run: |
+          grep -Eq '"deploymentEnabled"[[:space:]]*:[[:space:]]*false' vercel.json
+          test ! -d .vercel/output
+          test ! -f supabase/config.toml || true
+          echo 'No Vercel deployment, Supabase deployment, schema mutation, or project unpause was executed by this workflow.'
+      - name: Commit deterministic recovery mount if needed
+        shell: bash
+        run: |
+          git add index.html
+          if git diff --cached --quiet; then
+            echo 'Generated GhostLane recovery source already settled.'
+            exit 0
+          fi
+          changed="$(git diff --cached --name-only)"
+          test "$changed" = "index.html"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'recovery: mount GhostLane encrypted ledger backup UI'
+          git push origin HEAD:android-signing-cutover-data-recovery
